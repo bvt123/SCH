@@ -155,6 +155,12 @@ At least row count could and should be calculated. Other columns are optional bu
 - nulls - a map with potential problems in blocks (some value is null due to left join, some values are out of boundaries or not correlated to other values)
 - query_id - will give the ability to join with system.query_log and show memory usage in ETL.LogExt view
 
+### Cluster
+
+ - replicated tables
+ - Kafka sources
+ - sharded processing
+ 
 ### Natural vs Synthetic timestamps
 
 
