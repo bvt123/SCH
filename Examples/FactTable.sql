@@ -1,12 +1,6 @@
-/*
- depends on: Agi.LedgerAccount Agi.LedgerTransaction
- dependent tables/MVs:  ETL.CustomerBalance, Fact.Casino
 
- */
-
---drop table Fact.Transaction3;
---exchange tables Fact.Transaction and Fact.Transaction3;
-CREATE TABLE if not exists FactTable on cluster replicated
+--drop table Fact.Transaction;
+CREATE TABLE if not exists Fact.Transaction on cluster replicated
 (
     `uuid` UUID,
     `customer` UUID,
@@ -25,12 +19,11 @@ CREATE TABLE if not exists FactTable on cluster replicated
     INDEX ix1 created_at TYPE minmax GRANULARITY 2,
     INDEX ix2 pos TYPE minmax GRANULARITY 2
 )
-ENGINE = ReplicatedReplacingMergeTree('/clickhouse/replicated/Fact/Table', '{replica}')
+ENGINE = ReplicatedReplacingMergeTree('/clickhouse/replicated/Fact/Transaction', '{replica}')
 PARTITION BY (table, toYYYYMM(created_at))
 ORDER BY (related_id, uuid)
 ;
 
---insert into Fact.Transaction3 select * except ( loaded_at ) from Fact.Transaction;
 set agi_topic='Transaction';
 use Agi;
 
@@ -44,7 +37,7 @@ with lt as (
               toDecimal64OrZero(toString(d.debit_amount),3) as debit_amount,
               --d.debit_amount as debit_amount,
               d.related_type,d.created,d.account_uuid
-          from LedgerTransaction where NextBlock()
+          from LedgerTransaction where schBlock()
     )
 select * from (
      select _uuid                                                 as uuid,
