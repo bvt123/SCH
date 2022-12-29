@@ -1,8 +1,6 @@
 /*
  ETL Step for block of data got ready after dependencies check.
  Template for placing to ETL.Params with tag TemplateStep
- to debug Transformations it could be useful to get the substituted sql code for the topic:
- clickhouse-client -q "select sql from ETL.LineageDict where topic='BetSlip'" -f TSVRaw | clickhouse-format -n > _BetSlip.sql
 
  to run the code 2 settings should be set:
  - agi_topic
@@ -10,7 +8,7 @@
  hostid used for mutex exclusion if Scheduler runs on different servers
  runid is only for nice-looking Scheduler logs with correlated lines
 
- Params (topic,src,dst,toString(delay),before, after,maxstep,vs.as_select):
+ Params
   0.  topic from ETL.Offsets (like BetSlip)
   1.  src table
   2.  dst table
@@ -21,13 +19,14 @@
   7.  select * from ETL.{0}Transform, but Transform View is expanded from system.tables because of bug witch slows down query in case: insert/view/select/direct mysql dict
  */
 
-insert into SCH.Params
+
+insert into bvt.Params
 select 'TemplateStep',$$
 
 set max_partitions_per_insert_block=1000;
-insert into ETL.Offsets (topic, next, last, rows,  consumer,state,hostid)
-    with bvtTableDependencies('{topic}',{delay}) as _deps,
-         ( select last from ETL.Offsets where topic=getSetting('agi_topic') ) as _last,
+insert into SCH.Offsets (topic, next, last, rows,  consumer,state,hostid)
+    with getTableDependencies('{table}',{delay}) as _deps,
+         ( select last from SCH.Offsets where topic=getSetting('agi_topic') ) as _last,
          data as ( select pos,id from {src}
                    where (pos > _last.1 or pos = _last.1 and  id > _last.2 )
                      and pos < _deps.1
@@ -41,7 +40,7 @@ insert into ETL.Offsets (topic, next, last, rows,  consumer,state,hostid)
         if(rows >= {maxstep},'FullStep','Step')       as consumer,
         if(rows > 0, 'processing', _deps.2 )          as state,
         splitByChar(':',getSetting('log_comment'))[1] as hostid
-    from ETL.Offsets
+    from SCH.Offsets
     where topic=getSetting('agi_topic')
       and next.1 = toDateTime64(0,3)
 ;
@@ -59,7 +58,7 @@ select * from SCH.OffsetsCheck;
 {before}
 
 -- Process
-insert into {dst} select * from ETL.{topic}Transform;
+{insert_into_table}
 
 -- after SQL
 {after}
@@ -67,7 +66,7 @@ insert into {dst} select * from ETL.{topic}Transform;
 select now(), 'INFO',getSetting('agi_topic') || '-' || splitByChar(':',getSetting('log_comment'))[2],
     'processed',
     sum(rows),max(max_ts),
-    formatReadableTimeDelta(dateDiff(second , (select run from ETL.Offsets where topic=getSetting('agi_topic')),now())),
+    formatReadableTimeDelta(dateDiff(second , (select run from SCH.Offsets where topic=getSetting('agi_topic')),now())),
     sumMap(nulls)
 from ETL.Log
 where topic=getSetting('agi_topic')
@@ -76,9 +75,9 @@ group by query_id
 order by max(ts) desc
 limit 1;
 
-insert into ETL.Offsets (topic, last, rows, consumer, state)
+insert into SCH.Offsets (topic, last, rows, consumer, state)
     select topic, next, rows,consumer, toString(dateDiff(minute, last.1, next.1)) || 'min'
-    from ETL.Offsets
+    from SCH.Offsets
     where topic=getSetting('agi_topic')
       and next.1 != toDateTime64(0,3)
 ;

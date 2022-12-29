@@ -2,7 +2,7 @@
  Full reload for small data
 
  Params (topic,src,dst,toString(delay),before, after,maxstep,vs.as_select):
-  0.  topic from ETL.Offsets (like BetSlip)
+  0.  topic from SCH.Offsets (like BetSlip)
   1.  src table
   2.  dst table
   3.  delay from now for slow down data transform
@@ -13,53 +13,50 @@
 
  */
 
-insert into ETL.Params
+insert into bvt.Params
 select 'TemplateReload',$$
 
 create temporary table _now as select now() as ts;
-set agi_topic='{topic}';
 
-insert into ETL.Offsets (topic, next, last, rows, consumer, state, hostid)
-    select '{topic}', (now(),0), last, 1, 'Reload','processing',
+insert into SCH.Offsets (topic, next, last, rows, consumer, state, hostid)
+    select getSetting('agi_topic'), (now(),0), last, 1, 'Reload','processing',
         splitByChar(':',getSetting('log_comment'))[1] as hostid
-    from ETL.Offsets
-    where topic='{topic}' and next.1 = toDateTime64(0,3)
+    from SCH.Offsets
+    where topic=getSetting('agi_topic') and next.1 = toDateTime64(0,3)
 ;
 
 -- check if we are already processing that topic somewhere
-select * from ETL.OffsetsCheck;
+select * from SCH.OffsetsCheck;
 
-drop table if exists ETL.{topic}2;
-create table ETL.{topic}2 as {dst};
+drop table if exists {table}_new;
+create table {table}_new as {table};
 
 -- process
-insert into ETL.{topic}2 select * from ETL.{topic}Transform;
+{insert_into_table_new}
 
-exchange tables ETL.{topic}2 and {dst};
+exchange tables {table}_new and {table};
 
--- write to log
-insert into ETL.Log (topic, rows, max_id)
-select * from ETL.__{topic}Log
-;
+-- write to log todo: make MV
+insert into ETL.Log (topic, rows, max_id) select * from ETL.__{topic}Log ;
 
 create temporary table _stats as
     select  sum(rows) as rows, max(max_ts) as max_ts, sumMap(nulls) as nulls
     from ETL.Log
-    where topic='{topic}'
+    where topic=getSetting('agi_topic')
          and ts > now() - interval 1 hour
     group by query_id
     order by max(ts) desc
     limit 1
 ;
 
-insert into ETL.Offsets (topic, last, rows, consumer)
+insert into SCH.Offsets (topic, last, rows, consumer)
     select topic, next, (select rows from _stats),'Reload'
-    from ETL.Offsets
-    where topic='{topic}'
+    from SCH.Offsets
+    where topic=getSetting('agi_topic')
       and next.1 != toDateTime64(0,3)
 ;
 
-select now(), 'INFO','{topic}' || '-' || splitByChar(':',getSetting('log_comment'))[2],
+select now(), 'INFO',getSetting('agi_topic') || '-' || splitByChar(':',getSetting('log_comment'))[2],
     'processed',rows,max_ts,
     formatReadableTimeDelta(dateDiff(second , (select ts from _now),now())),
     nulls
@@ -68,4 +65,4 @@ select now(), 'INFO','{topic}' || '-' || splitByChar(':',getSetting('log_comment
 
 $$;
 
-system reload dictionary 'ETL.LineageDict';
+system reload dictionary 'SCH.LineageDict' on cluster replicated;

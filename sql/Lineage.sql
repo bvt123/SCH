@@ -1,53 +1,55 @@
 use SCH;
 
-create table if not exists Lineage on cluster replicated
+--drop table if exists Lineage on cluster replicated sync;
+--create table if not exists Lineage on cluster replicated
+drop table bvt.Lineage;
+create table bvt.Lineage
 (
-    dst         String,
-    topic       String,
+    table       String,
     depends_on  String,
-    template    String,
+    processor   String,
+    transforms  String,
     delay       String,
     repeat      String,
-    maxstep     String default '1000000',
+    maxstep     Nullable(String),
     comment     String,
     before      String,
     after       String,
     user        String materialized currentUser(),
     updated_at  DateTime materialized now()
-)  engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage', '{replica}')
+)  engine = ReplacingMergeTree
+--engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage2', '{replica}')
 order by tuple()
 ;
 
-create or replace dictionary LineageDict on cluster replicated
+-- clc -q "insert into bvt.Lineage format TSV" < l
+
+create or replace dictionary bvt.systemViews
 (
-    topic      String,
-    dst        String,
+    name String,
+    create String
+) PRIMARY KEY name
+layout(complex_key_direct)
+SOURCE (CLICKHOUSE(user 'dict' query '
+    select database || ''.'' || table as name,as_select as create from system.tables where engine=''View'' and {condition}
+'))
+;
+
+--create or replace dictionary LineageDst on cluster replicated
+create or replace dictionary bvt.LineageDst
+(
+    table       String,
     depends_on Array(String),
-    run_ETL    bool,
     delay      UInt16,
     repeat     UInt16,
     sql        String
-) PRIMARY KEY topic
+) PRIMARY KEY table
 SOURCE(CLICKHOUSE(
     user 'dict'
-    QUERY 'select * from SCH.ProcessTemplates'
-    invalidate_query 'SELECT max(updated_at) from SCH.Lineage'
+    QUERY 'select * from bvt.ProcessTemplates'
+    invalidate_query 'SELECT max(updated_at) from bvt.Lineage'
 ) )
 LAYOUT(complex_key_hashed())
 LIFETIME(300);
 
-create or replace dictionary LineageDst on cluster replicated
-(
-    dst   String,
-    topic String
-) PRIMARY KEY dst
-SOURCE(CLICKHOUSE(
-    user 'dict'
-    QUERY 'select argMax(dst,updated_at) as dst,  topic from SCH.Lineage where topic != '''' group by topic'
-    invalidate_query 'SELECT max(updated_at) from SCH.Lineage'
-))
-LAYOUT(complex_key_hashed())
-LIFETIME(300);
-
-system reload dictionary 'SCH.LineageDict';
 system reload dictionary 'SCH.LineageDst';

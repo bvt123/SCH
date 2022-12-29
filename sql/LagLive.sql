@@ -1,35 +1,45 @@
 use SCH;
 
-drop VIEW if exists LagLive on cluster replicated;
+drop VIEW if exists LagLive on cluster replicated sync;
 CREATE LIVE VIEW LagLive with refresh 5 on cluster replicated  as
+
 select topic,
        ifNull(hosts.host_name,hostName()) as hostname,
        sql,
-      -- last.1,min_last,run,now() + interval delay second,
+       run,last,mins,
        now()
-from (select o.topic as topic, toUInt8OrZero(splitByChar(':',o.topic)[2]) as shard,
-    sql
-   ,last,mins.min_last,run,delay
-    from ( select topic,sql,repeat,delay,min(if(depends='',now(),last.1)) as min_last
-            from (
-                select topic,sql,repeat,delay,dictGet('SCH.LineageDst','topic',arrayJoin(depends_on)) as depends
-                from SCH.LineageDict where run_ETL
-                ) as l
-            left join ( select * from
-                (select * from ETL.Offsets union all select * from ETL.OffsetsLocal)
-                 order by last desc limit 1 by topic) as o
-            on splitByChar(':',o.topic)[1] = l.depends
-            group by topic,sql,repeat,delay
-          ) as mins
-    join (select *,run from ETL.Offsets) as o
-    on splitByChar(':',o.topic)[1] = mins.topic
-    where last.1 < mins.min_last - interval 10 second
-      --and (datediff(second , run, now()) > repeat or o.consumer = 'FullStep' and o.hostid = '')
+from (
+    select O1.topic          as topic,
+           any(O1.processor) as processor,
+           any(O1.run)       as run,
+           any(O1.shard)     as shard,
+           any(O1.hostid)    as hostid,
+           any(O1.repeat)    as repeat,
+           any(O1.sql)       as sql,
+           any(O1.last)      as last,
+           minIf(O2.last.1, O2.last.1 != 0) as mins
+    from (  with splitByChar(':',topic)[1] as t
+            select topic, run, processor, hostid,
+                last.1                                              as last,
+                toUInt8OrZero(splitByChar(':',topic)[2])            as shard,
+                dictGet('bvt.LineageDst','sql',t)                   as sql,
+                dictGet('bvt.LineageDst','repeat',t)                as repeat,
+                arrayJoin(dictGet('bvt.LineageDst','depends_on',t)) as dep
+            from bvt.Offsets   -- tables list to build. only cluster wide
+            where sql != ''
+         ) as O1
+    left join ( select * from
+                ( select * from bvt.Offsets
+                    --union all select * from SCH.OffsetsLocal
+                ) where processor != 'deleted' order by last desc limit 1 by topic
+        ) as O2
+    on O1.dep = O2.topic
+    group by topic
 ) as updates
 left join (select host_name,shard_num from system.clusters where cluster='sharded') as hosts
 on shard = hosts.shard_num
-where sql != ''
+-- where
+  --and last < mins - interval 10 second
+  --and (datediff(second , run, now()) > repeat or processor = 'FullStep' and hostid = '')
 settings join_use_nulls=1;
-
---set agi_topic='BetSlipTest';
 
