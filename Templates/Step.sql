@@ -1,6 +1,6 @@
 /*
  ETL Step for block of data got ready after dependencies check.
- Template for placing to ETL.Params with tag TemplateStep
+ Template for placing to SCH.Params with tag TemplateStep
 
  to run the code 2 settings should be set:
  - agi_topic
@@ -9,9 +9,8 @@
  runid is only for nice-looking Scheduler logs with correlated lines
 
  Params
-  0.  topic from ETL.Offsets (like BetSlip)
-  1.  src table
-  2.  dst table
+  1.  table - dest table
+  2.  insert_into_table - Transform views processed to insert select statements
   3.  delay from now for slow down data transform
   4.  additional before sql
   5.  additional after sql
@@ -85,5 +84,4 @@ insert into SCH.Offsets (topic, last, rows, consumer, state)
 $$;
 
 system reload dictionary on cluster replicated 'SCH.LineageDict' ;
--- system reload dictionary 'ETL.LineageDst';
 
