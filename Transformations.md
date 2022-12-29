@@ -94,8 +94,8 @@ As it said earlier the Scheduler does the planning comparing timestamps of depen
 
 Template for every Fact table is set by the “processor” column in the Lineage table. By now, we have 2 processors used by the Scheduler: 
 
-- ETL/TemplateStep.sql  (for incremental load)
-- ETL/TemplateReload.sql (full reload on every ETL run for small tables)
+- Templates/Step.sql   (for incremental load)
+- Templates/Reload.sql (full reload on every ETL run for small tables)
 
 **Step**
 
