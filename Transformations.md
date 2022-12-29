@@ -46,11 +46,53 @@ We decided to use a “natural time” to synchronize Fact building process on d
 
 As a “position” to process only new (unseen) rows from source tables we use a DateTime64 column with some monotonic id key: `pos = tuple(dt, id)`
 
+### SCH.Offsets
+
+That table stores both the last updated timestamp for sources and already processed position for destination tables. Those timestamps is used to calculate the condition when to start the process of building the destination table. That process also uses timestamps to calculate a job - how much source data will be processed.
+
+```sql
+CREATE TABLE SCH.Offsets
+(
+    `topic` LowCardinality(String),
+    `last` Tuple(DateTime64(3), UInt64),
+    `rows` UInt32,
+    `next` Tuple(DateTime64(3), UInt64),
+    `run` DateTime64(3) MATERIALIZED now64(3),
+    `processor` LowCardinality(String),
+    `state` LowCardinality(String),
+    `hostid` LowCardinality(String)
+)
+ENGINE = KeeperMap('/ETL/Offsets')
+PRIMARY KEY topic;
+```
+
+Table data is placed into ZooKeeper to be able to use the order and replication features of ZK.
+
+SCH.Offsets should be initialized at least for the “last” column for every new processed topic.
+
+- topic - an id of row.  Name is based on table name with a suffixes:
+    - \#tag - to build tables from different sources with different transformations
+    - :xx - for sharded processing topic - could be a source table name, dest table name, or anything else.  It’s just a name or tag.   It’s possible to read one source table with two different topics (with their offsets)
+- last - tuple with (time, id) of last processed data
+- next - tuple with (time, id) - limiting the amount of data planned to be processed
+- run - last modification timestamp for information and finding problems.
+- processor - name of the process that promotes offset (also for finding problems)
+- state - any useful information from the working process.
+- hostid - the id of the host running the job for the topic. The topic should be processed by only one process at a time. Else - the MUTEX exception is generated. To clear mutex, just set an empty string to the hostid column.
+
+There are two Offsets tables - clusterized (KeeperMap) and local (EmbeddedRocksDB) to store the position for replicated and non-replicated tables.
+
+Also the Offsets table is used to place an exclusion locks to prevent multiple copies of ETL run for same topic simultaneously.
+
+### Jobs to run
+
+The Scheduler bash scripts sits in infinite loop waiting for a next job from the server.  Job - is the topic (table name) to process with SQL code to run.  Logic of calculating the jobs is located in Live View named **SCH.LagLive**. It reads SCH.Offset table for last run events and  SCH.Lineage table for dependancies list.
+
+As it said earlier the Scheduler does the planning comparing timestamps of dependent tables and limiting the pace of Transform runs.  After all the dependencies are met, Scheduler starts clickhouse-client with SQL script based on the SQL code template file with some substitutions. 
+
 ### Templates
 
-The Scheduler does the planning looking for timestamps of dependent tables and limiting the pace of Transform runs.  After all the dependencies are met, Scheduler starts clickhouse-client with SQL script based on the SQL code template file with some substitutions. 
-
-Template is set by processor column in the Lineage table. By now, we have 2 processors used by the Scheduler: 
+Template for every Fact table is set by the “processor” column in the Lineage table. By now, we have 2 processors used by the Scheduler: 
 
 - ETL/TemplateStep.sql  (for incremental load)
 - ETL/TemplateReload.sql (full reload on every ETL run for small tables)
@@ -82,45 +124,7 @@ This template does the following:
 - exhanges auxillary and main tables
 - writes state to Offsets table
 
-### SCH.Offsets
-
-The table that Stores both the last updated timestamp for sources and already processed position for destination tables. The Scheduler process uses those timestamps to start the process of building the destination table. That process uses timestamps to calculate a job - how much source data will be processed.
-
-```sql
-CREATE TABLE SCH.Offsets
-(
-    `topic` LowCardinality(String),
-    `last` Tuple(DateTime64(3), UInt64),
-    `rows` UInt32,
-    `next` Tuple(DateTime64(3), UInt64),
-    `run` DateTime64(3) MATERIALIZED now64(3),
-    `processor` LowCardinality(String),
-    `state` LowCardinality(String),
-    `hostid` LowCardinality(String)
-)
-ENGINE = KeeperMap('/ETL/Offsets')
-PRIMARY KEY topic;
-```
-
-Table data is placed into ZooKeeper to be able to use the order and replication features of ZK.
-
-SCH.Offsets should be initialized at least for the “last” column for every new processed topic.
-
-- topic - an id of row.  Name is based on table name with a suffixes:
-    - #tag - to build tables from different sources with different transformations
-    - :xx - for sharded processing topic - could be a source table name, dest table name, or anything else.  It’s just a name or tag.   It’s possible to read one source table with two different topics (with their offsets)
-- last - tuple with (time, id) of last processed data
-- next - tuple with (time, id) - limiting the amount of data planned to be processed
-- run - last modification timestamp for information and finding problems.
-- processor - name of the process that promotes offset (also for finding problems)
-- state - any useful information from the working process.
-- hostid - the id of the host running the job for the topic. The topic should be processed by only one process at a time. Else - the MUTEX exception is generated. To clear mutex, just set an empty string to the hostid column.
-
-There are two Offsets tables - clusterized (KeeperMap) and local (EmbeddedRocksDB) to store the position for replicated and non-replicated tables.
-
-Also the Offsets table is used to place an exclusion locks to prevent multiple copies of ETL run for same topic simultaneously.
-
-### Source
+### Source tables
 
 - any table used as the main source for the ETL process should have at least two monotonically increasing  columns with fixed names :
     - pos DateTime64

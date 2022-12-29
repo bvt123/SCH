@@ -1,9 +1,8 @@
 use SCH;
 
 --drop table if exists Lineage on cluster replicated sync;
---create table if not exists Lineage on cluster replicated
-drop table bvt.Lineage;
-create table bvt.Lineage
+create table if not exists Lineage on cluster replicated
+create table SCH.Lineage2 on cluster replicated
 (
     table       String,
     depends_on  String,
@@ -17,12 +16,12 @@ create table bvt.Lineage
     after       String,
     user        String materialized currentUser(),
     updated_at  DateTime materialized now()
-)  engine = ReplacingMergeTree
---engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage2', '{replica}')
+)  --engine = ReplacingMergeTree
+engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage2', '{replica}')
 order by tuple()
 ;
 
--- clc -q "insert into bvt.Lineage format TSV" < l
+-- clc -q "insert into SCH.Lineage2(table, depends_on, processor, transforms, delay, repeat, maxstep) format TSV" < l1
 
 create or replace dictionary bvt.systemViews
 (

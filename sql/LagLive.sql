@@ -28,7 +28,7 @@ from (
             from bvt.Offsets   -- tables list to build. only cluster wide
             where sql != ''
          ) as O1
-    left join ( select * from
+     join ( select * from
                 ( select * from bvt.Offsets
                     --union all select * from SCH.OffsetsLocal
                 ) where processor != 'deleted' order by last desc limit 1 by topic
