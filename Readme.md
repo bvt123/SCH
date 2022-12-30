@@ -32,26 +32,19 @@ There are two deduplication mechanisms:
 
 ### Hot Standby Replicated Cluster
 
-(for stability and performance)
-
-In a replicated cluster mode ETL processes run toward only one cluster node.
-
-Other cluster nodes receive data via cluster replication: 
+In a replicated cluster mode ETL processes run toward only one replica. Other replicas receive data via cluster replication: 
 
 - most stage-level tables (ReplicatedMT)
 - Fact tables and Dimension sources (ReplicatedMT)
 - Offsets table (KeeperMap)
 
-Some stage-level tables are based on the EmbeddedRocksDB engine (non-replicated by design) or with full-reload processing so they receive data independently on every cluster node as with the sharded mode (see below).
-
-Client access (BI) could be directed to any cluster node (with or without a load balancer).
+Some stage-level tables are based on the EmbeddedRocksDB engine (non-replicated by design) or with full-reload processing. Such tables receive data independently on every cluster node as in sharded mode (see below). Such tables should not be big.
 
 ### Sharded Cluster
 
-- any table could be split into several shards by some “where the expression” defined in the Transform view or by reading already sharded source tables - from the Kafka partitions or the previous ETL step.
+- any table could be split into several shards by some “where expression” defined in the Transform view or by processing already sharded source tables received from Kafka partitions or the previous ETL step.
 - “sharding key”  could be defined in a Transform View to skip some data not related to the shard - e.x. jumpConsistentHash(id,2)
 - every shard should have all the dictionaries and tables needed for join-transforms.
 - The Scheduler calls the same Transform View for every shard
 - SCH.Offsets table store “topic" position for every shard independently.
 - The scheduler runs Transform view on every server in the shard group.
-- full reload tables are processed like shards - independently on all servers with full copy on every server (no sharding expression in Transform view). It’s OK, as such tables should not be big.
