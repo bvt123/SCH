@@ -13,17 +13,22 @@ The ETL code is written in SQL as Views ready for the insert-as-select query to 
 
 The process of building a wide Fact table is orchestrated by a tool external to Clickhouse named “Scheduler” by looking for updated timestamps of dependent source tables.  Building the Fact table will be postponed if some Stage tables still do not receive data until all the source tables are updated to [nearly] the same natural time.  The scheduler is a bash script running an infinite loop that requests a list of destination tables ready to be processed and executes SQL statements received together with the tables list.  It does the asynchronous run of clickhouse-client with the SQL code received. 
 
-In case of failures in external systems data inserted into Stage tables could have duplicates due to the “at least once” delivery concept of clickhouse Kafka Engine or other cases of retries on failures in the incoming data flow. All the DWH is built with idempotency in mind.  Repeated inserts will not create duplicates. Block hashes checks and the ReplacingMT/CollaspisingMT table engines are used for data deduplication while inserting to Fact tables. The Scheduler selects the very same blocks of data to process by Transform Views.
-
-Analysts and other people use Redash as the main instrument for working with data.  Redash runs on its own server/pod and stores working data in Postgress DBMS.   Some users have direct access to the Clickhouse cluster to run SQL queries.
-
-MySQL and Postgress Databases which are used as storage for DWH tools (AirFlow and Redash) should be backed up and/or replicated to get high availability.
-
 ### Kafka
 
 - Due to some limitations, we could not do a heavy Join in standard Clickhouse’s Kafka consumer loop using Materialized Views. Possibly [it will change in the future](https://github.com/ClickHouse/ClickHouse/pull/42777) but for now, we shouldn’t do long processing in MV that reads data from Kafka Engine.
 - Replicated tables receive data from Kafka via a common consumer group on all replicas
 - non-replicated tables receive data from Kafka via their consumer groups, with names from the “replica_id” or “shard_id” macro setting (like clickhouse01, clickhouse02)
+
+### Deduplication on Insert
+
+In case of failures in external systems data inserted into Stage tables could have duplicates due to the “at least once” delivery concept of Clickhouse's Kafka Engine or other cases of retries on failures in the incoming data flow. 
+
+All ETL processes is built with idempotency in mind.  Repeated inserts should not create duplicates in destination Fact or Dimension tables. 
+
+There are two deduplication mechanisms:
+
+ - Block hashes checks: Clickhouse stores a hash for every inserted block, and the Scheduler uses these hashes to identify identical blocks of data for processing by the Transform Views.
+ - ReplacingMT/CollaspisingMT table engines. We look up every row in destination table before inserting, to ensure that duplicates are not produced. This process slows down inserts, but it provides more assurance against different type of problems in the data pipeline.
 
 ### Hot Standby Replicated Cluster
 
