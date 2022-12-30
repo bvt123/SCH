@@ -22,10 +22,8 @@ create or replace function schBlock on cluster replicated as () -> (
 ;
 
 --drop table SCH.Offsets on cluster replicated sync;
---CREATE TABLE if not exists Offsets on cluster replicated
-
-drop table bvt.Offsets;
-CREATE TABLE  bvt.Offsets
+exchange tables SCH.Offsets and SCH.Offsets2 on cluster replicated;
+CREATE TABLE if not exists SCH.Offsets2 on cluster replicated
 (
     topic       LowCardinality(String),
     last        Tuple(DateTime64(3), UInt64),
@@ -36,10 +34,9 @@ CREATE TABLE  bvt.Offsets
     state       LowCardinality(String),
     hostid      LowCardinality(String)
 )
-ENGINE = EmbeddedRocksDB
---ENGINE = KeeperMap('/SCH/Offsets2')
+ENGINE = KeeperMap('/SCH/Offsets2')
 PRIMARY KEY topic;
 
- -- clc -q "insert into bvt.Offsets(topic, last, rows, next, processor) format TSV" < o
+ -- clc -q "insert into bvt.Offsets(topic, last, next) format TSV" < o
 
 create table if not exists OffsetsLocal on cluster replicated as Offsets ENGINE = EmbeddedRocksDB primary key (topic);
