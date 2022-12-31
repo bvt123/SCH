@@ -50,7 +50,7 @@ group by topic;
 
 drop table Log on cluster replicated;
 create table if not exists Log on cluster replicated
-    as LogNull ENGINE = Buffer(ETL, LogNull, 16, 10, 300, 10000, 1000000, 10000000, 100000000);
+    as LogNull ENGINE = Buffer(ETL, LogNull, 1, 10, 600, 10000, 1000000, 10000000, 100000000);
 
 create or replace view LogExt on cluster replicated as
 select event_time,topic,
