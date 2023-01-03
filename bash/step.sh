@@ -32,3 +32,4 @@ if [ "$err" != "" ] ;  then
                 $CLC 2>> $LOG
 
 fi
+sleep 2
