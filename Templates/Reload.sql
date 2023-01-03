@@ -48,7 +48,7 @@ create temporary table _stats as
 ;
 
 insert into SCH.Offsets (topic, last, rows, processor)
-    select topic, next, (select rows from _stats),'Reload'
+    select topic, next, ifNull((select rows from _stats),0),'Reload'
     from SCH.Offsets
     where topic=getSetting('agi_topic')
       and next.1 != toDateTime64(0,3)
