@@ -1,6 +1,6 @@
-create or replace view bvt.ProcessTemplates as
-with dictGet('bvt.systemViews','create',trimBoth(x)) as viewcode,
-     map('table'  , L.table,
+create or replace view SCH.ProcessTemplates on cluster replicated as
+with dictGet('SCH.systemViews','create',trimBoth(x)) as viewcode,
+     map('table'  , splitByChar('#',L.table)[1],
         'src'    , dep[1],
         'before' , before,
         'after'  , after,
@@ -9,12 +9,12 @@ with dictGet('bvt.systemViews','create',trimBoth(x)) as viewcode,
         'repeat' , toString(repeat),
         'insert_into_table', arrayStringConcat(
             arrayMap(x->
-                'insert into ' || L.table || ' ' || viewcode || '; \n'
+                'insert into ' || splitByChar('#',L.table)[1] || ' ' || viewcode || '; \n'
             ,splitByChar(',',L.transforms))
          ),
         'insert_into_table_new', arrayStringConcat(  -- for Reload
             arrayMap(x->
-                'insert into ' || L.table || '_new ' || viewcode || '; \n'
+                'insert into ' || splitByChar('#',L.table)[1] || '_new ' || viewcode || '; \n'
             ,splitByChar(',',L.transforms))
          )
      ) as subst
@@ -26,7 +26,7 @@ select L.table,
         arrayStringConcat(arrayMap(x->if(has(mapKeys(subst),x),subst[x],x),splitByRegexp('[\\{\\}]',P.v))),
        '((/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(--.*))',''),   -- https://blog.ostermiller.org/finding-comments-in-source-code-using-regular-expressions/
        '([\r\n]+)',' ') as sql
-from (select * from bvt.Params order by updated_at desc limit 1 by key) as P
-join (select * from bvt.Lineage where processor in ['Step','Reload','sql'] order by updated_at desc limit 1 by table) as L
+from (select * from SCH.Params order by updated_at desc limit 1 by key) as P
+join (select * from SCH.Lineage where processor in ['Step','Reload','sql'] order by updated_at desc limit 1 by table) as L
 on 'Template' || L.processor = P.key
 ;

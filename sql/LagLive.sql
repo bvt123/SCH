@@ -1,12 +1,13 @@
 use SCH;
 
 drop VIEW if exists LagLive on cluster replicated sync;
-CREATE LIVE VIEW LagLive with refresh 5 on cluster replicated  as
-
+CREATE LIVE VIEW LagLive with refresh 5 on cluster replicated
+    as
+with if(mins != 0, mins, now()) as mins_now
 select topic,
        ifNull(hosts.host_name,hostName()) as hostname,
        sql,
-       run,last,mins,
+      --run,last,mins,mins_now,repeat,
        now()
 from (
     select O1.topic          as topic,
@@ -22,24 +23,22 @@ from (
             select topic, run, processor, hostid,
                 last.1                                              as last,
                 toUInt8OrZero(splitByChar(':',topic)[2])            as shard,
-                dictGet('bvt.LineageDst','sql',t)                   as sql,
-                dictGet('bvt.LineageDst','repeat',t)                as repeat,
-                arrayJoin(dictGet('bvt.LineageDst','depends_on',t)) as dep
-            from bvt.Offsets   -- tables list to build. only cluster wide
+                dictGet('SCH.LineageDst','sql',t)                   as sql,
+                dictGet('SCH.LineageDst','repeat',t)                as repeat,
+                arrayJoin(dictGet('SCH.LineageDst','depends_on',t)) as dep
+            from SCH.Offsets   -- tables list to build. only cluster wide
             where sql != ''
          ) as O1
-     join ( select * from
-                ( select * from bvt.Offsets
-                    --union all select * from SCH.OffsetsLocal
-                ) where processor != 'deleted' order by last desc limit 1 by topic
+    left join ( select *,splitByChar(':',topic)[1] as t from
+                 ( select * from SCH.Offsets union all select * from SCH.OffsetsLocal
+                 ) where processor != 'deleted' order by last desc limit 1 by topic
         ) as O2
-    on O1.dep = O2.topic
+    on O1.dep = O2.t  -- todo: better shard_id calculation!!!
     group by topic
 ) as updates
 left join (select host_name,shard_num from system.clusters where cluster='sharded') as hosts
 on shard = hosts.shard_num
--- where
-  --and last < mins - interval 10 second
-  --and (datediff(second , run, now()) > repeat or processor = 'FullStep' and hostid = '')
+where last < mins_now - interval 10 second
+  and (datediff(second , run, now()) > repeat or processor = 'FullStep' and hostid = '')
 settings join_use_nulls=1;
 

@@ -13,12 +13,12 @@
 
  */
 
-insert into bvt.Params
+insert into SCH.Params
 select 'TemplateReload',$$
 
 create temporary table _now as select now() as ts;
 
-insert into SCH.Offsets (topic, next, last, rows, consumer, state, hostid)
+insert into SCH.Offsets (topic, next, last, rows, processor, state, hostid)
     select getSetting('agi_topic'), (now(),0), last, 1, 'Reload','processing',
         splitByChar(':',getSetting('log_comment'))[1] as hostid
     from SCH.Offsets
@@ -35,9 +35,7 @@ create table {table}_new as {table};
 {insert_into_table_new}
 
 exchange tables {table}_new and {table};
-
--- write to log todo: make MV
-insert into ETL.Log (topic, rows, max_id) select * from ETL.__{topic}Log ;
+drop table if exists {table}_new;
 
 create temporary table _stats as
     select  sum(rows) as rows, max(max_ts) as max_ts, sumMap(nulls) as nulls
@@ -49,7 +47,7 @@ create temporary table _stats as
     limit 1
 ;
 
-insert into SCH.Offsets (topic, last, rows, consumer)
+insert into SCH.Offsets (topic, last, rows, processor)
     select topic, next, (select rows from _stats),'Reload'
     from SCH.Offsets
     where topic=getSetting('agi_topic')
@@ -65,4 +63,4 @@ select now(), 'INFO',getSetting('agi_topic') || '-' || splitByChar(':',getSettin
 
 $$;
 
-system reload dictionary 'SCH.LineageDict' on cluster replicated;
+system reload dictionary 'SCH.LineageDst' on cluster replicated;

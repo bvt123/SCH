@@ -7,7 +7,7 @@ create or replace function getTableDependencies on cluster replicated as (t,_del
           from (select * from SCH.Offsets union all select * from SCH.OffsetsLocal)
           where length(splitByChar(':',topic) as topic_host) = 1 or topic_host[2] = getMacro('shard')
           order by last desc limit 1 by topic)
-    where has(dictGet('bvt.LineageDst','depends_on',t),splitByChar(':',topic)[1])
+    where has(dictGet('SCH.LineageDst','depends_on',t),splitByChar(':',topic)[1])
 );
 
 create or replace function schBlock on cluster replicated as () -> (
@@ -22,8 +22,7 @@ create or replace function schBlock on cluster replicated as () -> (
 ;
 
 --drop table SCH.Offsets on cluster replicated sync;
-exchange tables SCH.Offsets and SCH.Offsets2 on cluster replicated;
-CREATE TABLE if not exists SCH.Offsets2 on cluster replicated
+CREATE TABLE if not exists SCH.Offsets on cluster replicated
 (
     topic       LowCardinality(String),
     last        Tuple(DateTime64(3), UInt64),
@@ -34,9 +33,9 @@ CREATE TABLE if not exists SCH.Offsets2 on cluster replicated
     state       LowCardinality(String),
     hostid      LowCardinality(String)
 )
-ENGINE = KeeperMap('/SCH/Offsets2')
+ENGINE = KeeperMap('/SCH/Offsets3')
 PRIMARY KEY topic;
 
- -- clc -q "insert into bvt.Offsets(topic, last, next) format TSV" < o
-
+-- clc -q "insert into SCH.Offsets(topic, last, rows, next, processor) format TSV" < o
+truncate table Offsets;
 create table if not exists OffsetsLocal on cluster replicated as Offsets ENGINE = EmbeddedRocksDB primary key (topic);

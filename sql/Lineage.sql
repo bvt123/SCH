@@ -1,8 +1,7 @@
 use SCH;
 
---drop table if exists Lineage on cluster replicated sync;
-create table if not exists Lineage on cluster replicated
-create table SCH.Lineage2 on cluster replicated
+drop table if exists SCH.Lineage on cluster replicated sync;
+create table if not exists SCH.Lineage on cluster replicated
 (
     table       String,
     depends_on  String,
@@ -16,14 +15,14 @@ create table SCH.Lineage2 on cluster replicated
     after       String,
     user        String materialized currentUser(),
     updated_at  DateTime materialized now()
-)  --engine = ReplacingMergeTree
+)
 engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage2', '{replica}')
 order by tuple()
 ;
 
--- clc -q "insert into SCH.Lineage2(table, depends_on, processor, transforms, delay, repeat, maxstep) format TSV" < l1
+-- clc -q "insert into SCH.Lineage(table, depends_on, processor, transforms, delay, repeat, maxstep) format TSV" < l
 
-create or replace dictionary bvt.systemViews
+create or replace dictionary SCH.systemViews on cluster replicated
 (
     name String,
     create String
@@ -34,8 +33,7 @@ SOURCE (CLICKHOUSE(user 'dict' query '
 '))
 ;
 
---create or replace dictionary LineageDst on cluster replicated
-create or replace dictionary bvt.LineageDst
+create or replace dictionary SCH.LineageDst on cluster replicated
 (
     table       String,
     depends_on Array(String),
@@ -45,10 +43,10 @@ create or replace dictionary bvt.LineageDst
 ) PRIMARY KEY table
 SOURCE(CLICKHOUSE(
     user 'dict'
-    QUERY 'select * from bvt.ProcessTemplates'
-    invalidate_query 'SELECT max(updated_at) from bvt.Lineage'
+    QUERY 'select * from SCH.ProcessTemplates'
+    invalidate_query 'SELECT max(updated_at) from SCH.Lineage'
 ) )
 LAYOUT(complex_key_hashed())
 LIFETIME(300);
 
-system reload dictionary 'SCH.LineageDst';
+system reload dictionary 'SCH.LineageDst' on cluster replicated;

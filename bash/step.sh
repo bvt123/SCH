@@ -28,7 +28,7 @@ if [ "$err" != "" ] ;  then
 
         printf "insert into ETL.ErrLog(topic,err) values(\'$1\',\'$err\')" | $CLC 2>> $LOG
 
-        printf "insert into SCH.Offsets select topic,last,rows,next,consumer,\'$err\',hostid from SCH.Offsets where topic=\'$1\'" |
+        printf "insert into SCH.Offsets select topic,last,rows,next,processor,\'$err\',hostid from SCH.Offsets where topic=\'$1\'" |
                 $CLC 2>> $LOG
 
 fi

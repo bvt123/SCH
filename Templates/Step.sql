@@ -19,12 +19,12 @@
  */
 
 
-insert into bvt.Params
+insert into SCH.Params
 select 'TemplateStep',$$
 
 set max_partitions_per_insert_block=1000;
-insert into SCH.Offsets (topic, next, last, rows,  consumer,state,hostid)
-    with getTableDependencies('{table}',{delay}) as _deps,
+insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
+    with getTableDependencies(getSetting('agi_topic'),{delay}) as _deps,
          ( select last from SCH.Offsets where topic=getSetting('agi_topic') ) as _last,
          data as ( select pos,id from {src}
                    where (pos > _last.1 or pos = _last.1 and  id > _last.2 )
@@ -36,7 +36,7 @@ insert into SCH.Offsets (topic, next, last, rows,  consumer,state,hostid)
         stat.2,
         last,
         stat.1                                        as rows,
-        if(rows >= {maxstep},'FullStep','Step')       as consumer,
+        if(rows >= {maxstep},'FullStep','Step')       as processor,
         if(rows > 0, 'processing', _deps.2 )          as state,
         splitByChar(':',getSetting('log_comment'))[1] as hostid
     from SCH.Offsets
@@ -74,8 +74,8 @@ group by query_id
 order by max(ts) desc
 limit 1;
 
-insert into SCH.Offsets (topic, last, rows, consumer, state)
-    select topic, next, rows,consumer, toString(dateDiff(minute, last.1, next.1)) || 'min'
+insert into SCH.Offsets (topic, last, rows, processor, state)
+    select topic, next, rows,processor, toString(dateDiff(minute, last.1, next.1)) || 'min'
     from SCH.Offsets
     where topic=getSetting('agi_topic')
       and next.1 != toDateTime64(0,3)
@@ -83,5 +83,5 @@ insert into SCH.Offsets (topic, last, rows, consumer, state)
 
 $$;
 
-system reload dictionary on cluster replicated 'SCH.LineageDict' ;
+system reload dictionary on cluster replicated 'SCH.LineageDst' ;
 
