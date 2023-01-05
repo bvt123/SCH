@@ -39,3 +39,20 @@ PRIMARY KEY topic;
 -- clc -q "insert into SCH.Offsets(topic, last, rows, next, processor) format TSV" < o
 truncate table Offsets;
 create table if not exists OffsetsLocal on cluster replicated as Offsets ENGINE = EmbeddedRocksDB primary key (topic);
+
+create or replace dictionary SCH.OffsetsDict on cluster replicated
+(
+    topic       String,
+    last        DateTime64(3)
+)
+primary key topic
+source (CLICKHOUSE(user 'dict' query '
+    select splitByChar('':'',topic)[1] as topic,last.1
+    from ( select * from SCH.Offsets union all select * from SCH.OffsetsLocal)
+    where processor != ''deleted''
+      and {condition}
+    order by last desc
+    limit 1 by topic
+'))
+layout ( complex_key_direct() )
+;

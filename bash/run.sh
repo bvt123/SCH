@@ -16,10 +16,12 @@ process() {
 }
 
 while true ; do
-  clickhouse-client -q  "watch SCH.LagLive" -f TSVRaw | \
+#  clickhouse-client -q  "watch SCH.LagLive" -f TSVRaw | \
+  clickhouse-client -q  "select * from SCH.LagLive" -f TSVRaw | \
   while IFS=$'\t' read -r topic host sql ts version; do
        process $topic "$sql" $version $host
   done
-  printf '\010%(%Y-%m-%d %H:%M:%S)T\tWARN\twatch restarted\n' >> $LOG
+#  printf '\010%(%Y-%m-%d %H:%M:%S)T\tWARN\twatch restarted\n' >> $LOG
+#  printf '.' >> $LOG
   sleep 1
 done
