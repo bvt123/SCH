@@ -2,7 +2,7 @@ use SCH;
 
 --drop VIEW if exists LagLive on cluster replicated sync;
 -- CREATE LIVE VIEW LagLive with refresh 5 -- on cluster replicated
-create or replace view LagLive --on cluster replicated
+create or replace view LagLive on cluster replicated
     as
 SELECT topic,
     ifNull(hosts.host_name, hostName()) AS hostname,
