@@ -40,15 +40,11 @@ Transform View should reads 1st table in the dependencies list with “where con
 
 It’s also possible to use additional SQL statements to run other views before and after the Transform views.
 
-### Position
+### SCH.Offsets to store Position
 
-We decided to use a “natural time” to synchronize Fact building process on different source tables, considering that different OLTP systems work conformly to be able to serve customers. But we should add some delay to ETL processing to compensate for servers’ clock drift and OLTP systems’ own processing lags. We slow down the processing of the next data block to be sure that all data are on place.
+For every Stage and Fact table we store a current position in format inspired by sonyflakeid.  But as we write on Clickhouse's SQL a tuple(DateTime64,UInt64) is more suitable. DateTime - is a time when row inserted to table and UInt64 - some uniq id. Probably we will add hostname to that tuple, but now we still no need for that.
 
-As a “position” to process only new (unseen) rows from source tables we use a DateTime64 column with some monotonic id key: `pos = tuple(dt, id)`
-
-### SCH.Offsets
-
-That table stores both the last updated timestamp for sources and already processed position for destination tables. Those timestamps is used to calculate the condition when to start the process of building the destination table. That process also uses timestamps to calculate a job - how much source data will be processed.
+That table stores both the last updated timestamp for sources and already processed position for destination tables. Those timestamps are used to calculate the condition when to start the process of building the destination table. That process also uses timestamps to calculate a job - how much source data will be processed.
 
 ```sql
 CREATE TABLE SCH.Offsets
@@ -82,11 +78,13 @@ SCH.Offsets should be initialized at least for the “last” column for every n
 
 There are two Offsets tables - clusterized (KeeperMap) and local (EmbeddedRocksDB) to store the position for replicated and non-replicated tables.
 
-Also the Offsets table is used to place an exclusion locks to prevent multiple copies of ETL run for same topic simultaneously.
+Also the Offsets table is used to place an exclusion locks to prevent multiple copies of ETL run for the same topic simultaneously.
 
 ### Jobs to run
 
-The Scheduler bash scripts sits in infinite loop waiting for a next job from the server.  Job - is the topic (table name) to process with SQL code to run.  Logic of calculating the jobs is located in Live View named **SCH.LagLive**. It reads SCH.Offset table for last run events and  SCH.Lineage table for dependancies list.
+We decided to use a time to synchronize Fact building process on different source tables, considering that different OLTP systems work conformly to be able to serve customers. We should not process with joins to early (when not all data received) so considerable delay in ETL processing will help   to compensate servers’ clock drift and OLTP systems’ own processing lags. We slow down the processing of the next data block to be sure that all data are on place. DateTime part of position is used to calculate upper limit of the data to be processed.  
+
+The Scheduler bash scripts sits in infinite loop waiting for a next job from the server.  Job - is the topic (table name) to process with SQL code to run.  Logic of calculating the jobs is located in View named **SCH.LagLive**. It reads SCH.Offset table for last run events and  SCH.Lineage table to find dependant tables.
 
 As it said earlier the Scheduler does the planning comparing timestamps of dependent tables and limiting the pace of Transform runs.  After all the dependencies are met, Scheduler starts clickhouse-client with SQL script based on the SQL code template file with some substitutions. 
 

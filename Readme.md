@@ -15,7 +15,7 @@ The process of building a wide Fact table is orchestrated by a tool external to 
 
 ### Kafka
 
-- Due to some limitations, we could not do a heavy Join in standard Clickhouse’s Kafka consumer loop using Materialized Views. Possibly [it will change in the future](https://github.com/ClickHouse/ClickHouse/pull/42777) but for now, we shouldn’t do long processing in MV that reads data from Kafka Engine.
+- Due to Clickhouse Kafka Engine limitations, we could not do a heavy Join in standard Clickhouse’s Kafka consumer loop using Materialized Views. Possibly [it will change in the future](https://github.com/ClickHouse/ClickHouse/pull/42777) but for now, we shouldn’t do long processing in MV that reads data from Kafka Engine.
 - Replicated tables receive data from Kafka via a common consumer group on all replicas
 - non-replicated tables receive data from Kafka via their consumer groups, with names from the “replica_id” or “shard_id” macro setting (like clickhouse01, clickhouse02)
 
