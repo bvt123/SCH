@@ -46,6 +46,10 @@ For every Stage and Fact table we store a current position in format inspired by
 
 That table stores both the last updated timestamp for sources and already processed position for destination tables. Those timestamps are used to calculate the condition when to start the process of building the destination table. That process also uses timestamps to calculate a job - how much source data will be processed.
 
+Also the Offsets table is used to place an exclusion locks to prevent multiple copies of ETL run for the same topic simultaneously.
+
+There are two Offsets tables - clusterized (KeeperMap) and local (EmbeddedRocksDB) to store the position for replicated and non-replicated tables. Table data is placed into ZooKeeper to be able to use the order and replication features of ZK.
+
 ```sql
 CREATE TABLE SCH.Offsets
 (
@@ -62,23 +66,18 @@ ENGINE = KeeperMap('/ETL/Offsets')
 PRIMARY KEY topic;
 ```
 
-Table data is placed into ZooKeeper to be able to use the order and replication features of ZK.
-
 SCH.Offsets should be initialized at least for the “last” column for every new processed topic.
 
 - topic - an id of row.  Name is based on table name with a suffixes:
     - \#tag - to build tables from different sources with different transformations
-    - :xx - for sharded processing topic - could be a source table name, dest table name, or anything else.  It’s just a name or tag.   It’s possible to read one source table with two different topics (with their offsets)
+    - :xx - for sharded processing topic 
 - last - tuple with (time, id) of last processed data
 - next - tuple with (time, id) - limiting the amount of data planned to be processed
 - run - last modification timestamp for information and finding problems.
-- processor - name of the process that promotes offset (also for finding problems)
+- processor - name of the process that promotes offset 
 - state - any useful information from the working process.
 - hostid - the id of the host running the job for the topic. The topic should be processed by only one process at a time. Else - the MUTEX exception is generated. To clear mutex, just set an empty string to the hostid column.
 
-There are two Offsets tables - clusterized (KeeperMap) and local (EmbeddedRocksDB) to store the position for replicated and non-replicated tables.
-
-Also the Offsets table is used to place an exclusion locks to prevent multiple copies of ETL run for the same topic simultaneously.
 
 ### Jobs to run
 
@@ -136,7 +135,7 @@ This template does the following:
 You should provide a logging Mat View which reads the dest Fact table, calculate some aggregates on the inserted block and write statistics to the ETL.Log table. 
 
 ```sql
-create table if not exists ETL.LogStore
+create table if not exists LogStore
 (
     topic             LowCardinality(String),
     ts                DateTime default now(),
@@ -158,10 +157,10 @@ At least row count could and should be calculated. Other columns are optional bu
 - nulls - a map with potential problems in blocks (some value is null due to left join, some values are out of boundaries or not correlated to other values)
 - query_id - will give the ability to join with system.query_log and show memory usage in ETL.LogExt view
 
-Demo of the logging MV
+Example of the logging MV
 
 ```sql
-create or replace view ETL.__SupportTicketLog on cluster replicated as
+create materialized view ETL.__SupportTicketLog to SCH.Log as
 select getSetting('agi_topic') as topic,
         count()   as rows,
         max(id)   as max_id
