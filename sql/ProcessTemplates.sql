@@ -27,6 +27,8 @@ select L.table,
        '((/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(--.*))',''),   -- https://blog.ostermiller.org/finding-comments-in-source-code-using-regular-expressions/
        '([\r\n]+)',' ') as sql
 from (select * from SCH.Params order by updated_at desc limit 1 by key) as P
-join (select * from SCH.Lineage where processor in ['Step','Reload','sql'] order by updated_at desc limit 1 by table) as L
+join (select * from (select * from SCH.Lineage order by updated_at desc limit 1 by table)
+                     where processor in ['Step','Reload','sql']
+     ) as L
 on 'Template' || L.processor = P.key
 ;

@@ -8,6 +8,7 @@
 
 ### Habr article
  - russian?
+From ETL to CDC the Clickhouse way
 
  - alternatives 
    - DBT
