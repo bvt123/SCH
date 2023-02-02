@@ -38,11 +38,13 @@ select * from SCH.OffsetsCheck;
 -- after SQL
 {after}
 
+with (select last,next,run from SCH.Offsets where topic=getSetting('agi_topic')) as o,
+    (select count(),max(pos) from {table} where pos > o.1.1) as stat
 select now(), 'INFO',
     getSetting('agi_topic') || '-' || splitByChar(':',getSetting('log_comment'))[2],
-    'processed',0,next.1,
-    formatReadableTimeDelta(dateDiff(second , run, now()))
-from SCH.Offsets where topic=getSetting('agi_topic')
+    'processed',
+    stat.1,stat.2,
+    formatReadableTimeDelta(dateDiff(second , o.3, now()))
 ;
 
 insert into SCH.Offsets (topic, last, rows, processor, state)
