@@ -22,6 +22,7 @@ select L.table,
      arrayMap(x->trimBoth(x),splitByChar(',',L.depends_on)) as dep,
      if(delay  = '', 0,   parseTimeDelta(delay))            as delay,
      if(repeat = '', 3600,parseTimeDelta(repeat))           as repeat,
+     extractAllGroups(time,'(\d+)\:(\d+)\-(\d+)\:(\d+)')[1] as time,
      replaceRegexpAll(replaceRegexpAll(
         arrayStringConcat(arrayMap(x->if(has(mapKeys(subst),x),subst[x],x),splitByRegexp('[\\{\\}]',P.v))),
        '((/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(--.*))',''),   -- https://blog.ostermiller.org/finding-comments-in-source-code-using-regular-expressions/

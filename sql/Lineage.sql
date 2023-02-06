@@ -10,6 +10,7 @@ create table if not exists SCH.Lineage on cluster replicated
     delay       String,
     repeat      String,
     maxstep     Nullable(String),
+    time        String,  -- in format 0:30-6:00
     comment     String,
     before      String,
     after       String,
@@ -19,6 +20,8 @@ create table if not exists SCH.Lineage on cluster replicated
 engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage2', '{replica}')
 order by tuple()
 ;
+
+alter table SCH.Lineage on cluster replicated add column time String after maxstep;
 
 -- clc -q "insert into SCH.Lineage(table, depends_on, processor, transforms, delay, repeat, maxstep) format TSV" < l
 
@@ -39,6 +42,7 @@ create or replace dictionary SCH.LineageDst on cluster replicated
     depends_on Array(String),
     delay      UInt16,
     repeat     UInt16,
+    time       Array(UInt8),
     sql        String
 ) PRIMARY KEY table
 SOURCE(CLICKHOUSE(

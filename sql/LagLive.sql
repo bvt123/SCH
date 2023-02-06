@@ -20,6 +20,7 @@ from (
            any(O1.hostid)    as hostid,
            any(O1.repeat)    as repeat,
            any(O1.delay)     as delay,
+           any(O1.time)      as time,
            any(O1.sql)       as sql,
            any(O1.last)      as last,
            minIf(O2.last.1, O2.last.1 != 0) as mins
@@ -30,6 +31,7 @@ from (
                 dictGet('SCH.LineageDst','sql',t)                   as sql,
                 dictGet('SCH.LineageDst','repeat',t)                as repeat,
                 dictGet('SCH.LineageDst','delay',t)                 as delay,
+                dictGet('SCH.LineageDst','time',t)                  as time,
                 arrayJoin(dictGet('SCH.LineageDst','depends_on',t)) as dep
             from SCH.Offsets   -- tables list to build. only cluster wide
             where sql != ''
@@ -43,8 +45,12 @@ from (
 ) as updates
 left join (select host_name,shard_num from system.clusters where cluster='sharded') as hosts
 on shard = hosts.shard_num
-where (processor = 'FullStep' and hostid = '')
-  or
+where ((processor = 'FullStep' and hostid = '') or
       last < mins_now -- interval delay second
   and (datediff(second , run, now()) > repeat )
+)
+  and ( length(time) = 0 or
+      Hour(now())>= time[1] and Minute(now()) >= time[2] and Hour(now())<= time[3] and Minute(now()) <= time[4]
+)
+
 settings join_use_nulls=1;
