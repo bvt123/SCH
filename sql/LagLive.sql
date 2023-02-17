@@ -45,7 +45,7 @@ from (
 ) as updates
 left join (select host_name,shard_num from system.clusters where cluster='sharded') as hosts
 on shard = hosts.shard_num
-where ((processor = 'FullStep' and hostid = '') or
+where ((processor like 'Full%' and hostid = '') or
       last < mins_now -- interval delay second
   and (datediff(second , run, now()) > repeat )
 )

@@ -29,7 +29,7 @@ select L.table,
        '([\r\n]+)',' ') as sql
 from (select * from SCH.Params order by updated_at desc limit 1 by key) as P
 join (select * from (select * from SCH.Lineage order by updated_at desc limit 1 by table)
-                     where processor in ['Step','Reload','Range','sql']
+                     where processor in ['Step','Reload','Range','UniqId','sql']
      ) as L
 on 'Template' || L.processor = P.key
 ;
