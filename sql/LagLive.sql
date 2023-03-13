@@ -10,8 +10,8 @@ select topic,
        ifNull(hosts.host_name,hostName()) as hostname,
        sql,
 --      run,last,mins,mins_now,repeat,
-       now()
-, toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00'))
+       now() as ts
+, toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00')) as seq
 from (
     select O1.topic          as topic,
            any(O1.processor) as processor,

@@ -3,9 +3,9 @@ set agi_topic='';
 create or replace view OffsetsCheck on cluster replicated as
   with (select rows, last.1, next.1,hostid,run,state from SCH.Offsets where topic = getSetting('agi_topic')) as off,
       splitByChar(':',getSetting('log_comment'))[1] as hostid
-  select now(), 'INFO',
+  select now() as ts, 'INFO' as level,
       getSetting('agi_topic') || if(shard != '', '-', '') || (splitByChar(':',getSetting('log_comment'))[2] as shard),
-      'processing', off.1, toDateTime(off.3),
+      'processing', off.1, toDateTime(off.3) as topic,
     'step:'  || toString(dateDiff(minute, off.2, off.3)) || 'min' ||
     ', lag:' || toString(dateDiff(minute, off.3, now())) || 'min' as mins,
 
