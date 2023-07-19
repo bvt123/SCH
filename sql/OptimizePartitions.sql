@@ -1,10 +1,10 @@
 --drop dictionary SCH.OptimizePartitions ;
-create or replace dictionary SCH.OptimizePartitions  (
+create or replace dictionary SCH.OptimizePartitions on cluster replicated (
     t          String,
     sql        String
 ) PRIMARY KEY t
 layout ( complex_key_direct() )
-source (CLICKHOUSE(user 'dict' query '
+source (CLICKHOUSE(user 'dict' password 'dict_pass' query '
 
 select t, arrayStringConcat(groupArray(s)) as sql from (
 SELECT concat(database, ''.'', table) as t, concat(

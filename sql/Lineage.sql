@@ -31,7 +31,7 @@ create or replace dictionary SCH.systemViews on cluster replicated
     create String
 ) PRIMARY KEY name
 layout(complex_key_direct)
-SOURCE (CLICKHOUSE(user 'dict' query '
+SOURCE (CLICKHOUSE(user 'dict' password 'dict_pass' query '
     select database || ''.'' || table as name,as_select as create from system.tables where engine=''View'' and {condition}
 '))
 ;
@@ -47,6 +47,7 @@ create or replace dictionary SCH.LineageDst on cluster replicated
 ) PRIMARY KEY table
 SOURCE(CLICKHOUSE(
     user 'dict'
+    password 'dict_pass'
     QUERY 'select * from SCH.ProcessTemplates'
     invalidate_query 'SELECT max(updated_at) from SCH.Lineage'
 ) )
