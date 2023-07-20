@@ -1,7 +1,7 @@
 #!/bin/bash
 
-LOG=$HOME/scheduler.log
-REQ=$HOME/sql-debug-cache/$1.sql
+LOG=scheduler.log
+REQ=./sql-debug-cache/$1.sql
 HID=`hostname`-`hostid`
 #CLC='clickhouse-client -n'
 delimiter="\{set_insert_deduplication_token\}"
