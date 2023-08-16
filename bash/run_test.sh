@@ -1,7 +1,7 @@
 #!/bin/bash
 
 LOG=./scheduler.log
-STEP=./step_test.sh
+STEP=./step.sh
 CONFIG_PATH=./config.xml
 
 printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\tscheduler started\n' >> $LOG

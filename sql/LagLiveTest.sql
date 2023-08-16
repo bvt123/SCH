@@ -2,7 +2,7 @@ CREATE or replace VIEW daniel.LagLive on cluster replicated
 AS
 WITH if(mins != 0, mins, now()) AS mins_now
 SELECT topic,
-       ifNull(hosts.host_name, hostName())                           AS hostname,
+       'clickhouse02.verekuu.com'                           AS hostname,
        sql,
        now()                                                         AS ts,
        toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00')) AS seq
