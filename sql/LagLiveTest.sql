@@ -1,17 +1,9 @@
 CREATE or replace VIEW daniel.LagLive on cluster replicated
-            (
-             `topic` LowCardinality(String),
-             `hostname` String,
-             `sql` String,
-             `ts` DateTime,
-             `seq` Int64
-                )
 AS
 WITH if(mins != 0, mins, now()) AS mins_now
 SELECT topic,
        ifNull(hosts.host_name, hostName())                           AS hostname,
-       --format('select \'{0}\'', topic) as sql,
-       'select count() from numbers(1e12)'                           AS sql,
+       sql,
        now()                                                         AS ts,
        toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00')) AS seq
 FROM (
@@ -66,6 +58,11 @@ FROM (
          FROM system.clusters
          WHERE cluster = 'sharded'
          ) AS hosts ON shard = hosts.shard_num
-where topic like '%#%'
+WHERE (((processor LIKE 'Full%') AND (hostid = '')) OR
+       ((last < mins_now) AND (dateDiff('second', run, now()) > repeat)))
+  AND ((length(time) = 0) OR
+       ((toHour(now()) >= (time[1])) AND (toMinute(now()) >= (time[2])) AND (toHour(now()) <= (time[3])) AND
+        (toMinute(now()) <= (time[4]))) OR (last < (now() - toIntervalDay(1))))
+  and topic like '%daniel.BetSlipTest#%'
     SETTINGS join_use_nulls = 1;
 

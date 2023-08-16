@@ -3,60 +3,71 @@ use SCH;
 --drop VIEW if exists LagLive on cluster replicated sync;
 -- CREATE LIVE VIEW LagLive with refresh 5 -- on cluster replicated
 
-create or replace view LagLive on cluster replicated as
-with if(mins != 0, mins, now()) as mins_now
-select topic,
-       ifNull(hosts.host_name, hostName())                           as hostname,
+CREATE or replace VIEW SCH.LagLive on cluster replicated as
+WITH if(mins != 0, mins, now()) AS mins_now
+SELECT topic,
+       ifNull(hosts.host_name, hostName())                           AS hostname,
        sql,
---      run,last,mins,mins_now,repeat,
-       now()                                                         as ts
-        ,
-       toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00')) as seq
-from (
-         select O1.topic                         as topic,
-                any(O1.processor)                as processor,
-                any(O1.run)                      as run,
-                any(O1.shard)                    as shard,
-                any(O1.hostid)                   as hostid,
-                any(O1.repeat)                   as repeat,
-                any(O1.delay)                    as delay,
-                any(O1.time)                     as time,
-                any(O1.sql)                      as sql,
-                any(O1.last)                     as last,
-                minIf(O2.last.1, O2.last.1 != 0) as mins
-         from (with splitByChar(':', topic)[1] as t
-               select topic,
-                      run,
-                      processor,
-                      hostid,
-                      last.1                                                as last,
-                      toUInt8OrZero(splitByChar(':', topic)[2])             as shard,
-                      dictGet('SCH.LineageDst', 'sql', t)                   as sql,
-                      dictGet('SCH.LineageDst', 'repeat', t)                as repeat,
-                      dictGet('SCH.LineageDst', 'delay', t)                 as delay,
-                      dictGet('SCH.LineageDst', 'time', t)                  as time,
-                      arrayJoin(dictGet('SCH.LineageDst', 'depends_on', t)) as dep
-               from SCH.Offsets -- tables list to build. only cluster wide
-               where sql != ''
-                  ) as O1
-                  left join (select *, splitByChar(':', topic)[1] as t
-                             from (select * from SCH.Offsets union all select * from SCH.OffsetsLocal
-                                      )
-                             where processor != 'deleted'
-                             order by last desc
-                             limit 1 by topic
-             ) as O2
-                            on O1.dep = O2.t -- todo: better shard_id calculation!!!
-         group by topic
-         ) as updates
-         left join (select host_name, shard_num from system.clusters where cluster = 'sharded') as hosts
-                   on shard = hosts.shard_num
-where ((processor like 'Full%' and hostid = '') or
-       last < mins_now -- interval delay second
-           and (datediff(second, run, now()) > repeat)
-    )
-  and (length(time) = 0 or
-       (Hour(now()) >= time[1] and Minute(now()) >= time[2] and Hour(now()) <= time[3] and Minute(now()) <= time[4])
-    or last < now() - interval 1 day
-    )
-    settings join_use_nulls = 1;
+       now()                                                         AS ts,
+       toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00')) AS seq
+FROM (
+         SELECT O1.topic                           AS topic,
+                any(O1.processor)                  AS processor,
+                any(O1.run)                        AS run,
+                any(O1.shard)                      AS shard,
+                any(O1.hostid)                     AS hostid,
+                any(O1.repeat)                     AS repeat,
+                any(O1.delay)                      AS delay,
+                any(O1.time)                       AS time,
+                any(O1.sql)                        AS sql,
+                any(O1.last)                       AS last,
+                minIf(O2.last.1, (O2.last.1) != 0) AS mins
+         FROM (
+                  WITH splitByChar(':', topic)[1] AS t
+                  SELECT topic,
+                         run,
+                         processor,
+                         hostid,
+                         last.1                                                AS last,
+                         toUInt8OrZero(splitByChar(':', topic)[2])             AS shard,
+                         dictGet('SCH.LineageDst', 'sql', t)                   AS sql,
+                         dictGet('SCH.LineageDst', 'repeat', t)                AS repeat,
+                         dictGet('SCH.LineageDst', 'delay', t)                 AS delay,
+                         dictGet('SCH.LineageDst', 'time', t)                  AS time,
+                         arrayJoin(dictGet('SCH.LineageDst', 'depends_on', t)) AS dep
+                  FROM SCH.Offsets
+                  WHERE sql != ''
+                  ) AS O1
+                  LEFT JOIN
+              (
+                  SELECT *,
+                         splitByChar(':', topic)[1] AS t
+                  FROM (
+                           SELECT *
+                           FROM SCH.Offsets
+                           UNION ALL
+                           SELECT *
+                           FROM SCH.OffsetsLocal
+                           )
+                  WHERE processor != 'deleted'
+                  ORDER BY last DESC
+                  LIMIT 1 BY topic
+                  ) AS O2 ON O1.dep = O2.t
+         GROUP BY topic
+         ) AS updates
+         LEFT JOIN
+     (
+         SELECT host_name,
+                shard_num
+         FROM system.clusters
+         WHERE cluster = 'sharded'
+         ) AS hosts ON shard = hosts.shard_num
+WHERE (((processor LIKE 'Full%') AND (hostid = '')) OR
+       ((last < mins_now) AND (dateDiff('second', run, now()) > repeat)))
+  AND ((length(time) = 0) OR
+       ((toHour(now()) >= (time[1])) AND (toMinute(now()) >= (time[2])) AND (toHour(now()) <= (time[3])) AND
+        (toMinute(now()) <= (time[4]))) OR (last < (now() - toIntervalDay(1))))
+  and topic not like '%daniel.BetSlipTest#%'
+    SETTINGS join_use_nulls = 1;
+
+
