@@ -39,5 +39,5 @@ FROM (
                   ORDER BY updated_at DESC
                   LIMIT 1 BY table
                   )
-         WHERE processor IN ['Step', 'Reload', 'Range', 'UniqId', 'sql', 'Incremental']
+         WHERE processor IN ['Step', 'Reload', 'Range', 'UniqId', 'sql', 'Incremental', 'Incremental2']
          ) AS L ON concat('Template', L.processor) = P.key;
