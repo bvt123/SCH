@@ -67,7 +67,7 @@ WHERE (((processor LIKE 'Full%') AND (hostid = '')) OR
   AND ((length(time) = 0) OR
        ((toHour(now()) >= (time[1])) AND (toMinute(now()) >= (time[2])) AND (toHour(now()) <= (time[3])) AND
         (toMinute(now()) <= (time[4]))) OR (last < (now() - toIntervalDay(1))))
-  and topic not like '%daniel.BetSlipTest#%'
+  and topic not like '%daniel.BetSlipTest%'
     SETTINGS join_use_nulls = 1;
 
 
