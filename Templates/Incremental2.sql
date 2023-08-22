@@ -23,8 +23,8 @@ from SCH.OffsetsCheck;
 
 
 
-insert into SCH.Offsets (topic, last, rows, processor)
-select topic, next, (select rows from _stats), 'Incremental2'
+insert into SCH.Offsets (topic, last, processor)
+select topic, next,'Incremental2'
 from SCH.Offsets
 where topic = getSetting('agi_topic')
   and next.1 != toDateTime64(0, 3)
