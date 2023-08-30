@@ -2,6 +2,8 @@
 insert into SCH.Params
 select 'TemplateUniqId',$$
 
+set receive_timeout=300;
+SYSTEM SYNC REPLICA {src} /*STRICT */;
 set max_partitions_per_insert_block=1000;
 insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
     with getTableDependencies(getSetting('agi_topic'),{delay}) as _deps,
