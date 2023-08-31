@@ -31,7 +31,7 @@ create or replace dictionary SCH.systemViews on cluster replicated
     create String
 ) PRIMARY KEY name
 layout(complex_key_direct)
-SOURCE (CLICKHOUSE(user 'dict' password 'dict_pass' query '
+SOURCE (CLICKHOUSE(user 'dict' password '[HIDDEN]' query '
     select database || ''.'' || table as name,as_select as create from system.tables where engine=''View'' and {condition}
 '))
 ;

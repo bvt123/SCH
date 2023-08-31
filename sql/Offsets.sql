@@ -46,7 +46,7 @@ create or replace dictionary SCH.OffsetsDict on cluster replicated
     last        DateTime64(3)
 )
 primary key topic
-source (CLICKHOUSE(user 'dict' password 'dict_pass' query '
+source (CLICKHOUSE(user 'dict' password '[HIDDEN]' query '
     select splitByChar('':'',topic)[1] as topic,last.1
     from ( select * from SCH.Offsets union all select * from SCH.OffsetsLocal)
     where processor != ''deleted''
