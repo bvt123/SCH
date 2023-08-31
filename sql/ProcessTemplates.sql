@@ -1,35 +1,43 @@
 create or replace view SCH.ProcessTemplates on cluster replicated as
-with dictGet('SCH.systemViews','create',trimBoth(x)) as viewcode,
-     map('table'  , splitByChar('#',L.table)[1],
-        'src'    , dep[1],
-        'before' , before,
-        'after'  , after,
-        'maxstep', maxstep,
-        'delay'  , toString(delay),
-        'repeat' , toString(repeat),
-        'insert_into_table', arrayStringConcat(
-            arrayMap(x->
-                'insert into ' || splitByChar('#',L.table)[1] || ' ' || viewcode || '; \n'
-            ,splitByChar(',',L.transforms))
-         ),
-        'insert_into_table_new', arrayStringConcat(  -- for Reload
-            arrayMap(x->
-                'insert into ' || splitByChar('#',L.table)[1] || '_new ' || viewcode || '; \n'
-            ,splitByChar(',',L.transforms))
-         )
-     ) as subst
-select L.table,
-     arrayMap(x->trimBoth(x),splitByChar(',',L.depends_on)) as dep,
-     if(delay  = '', 0,   parseTimeDelta(delay))            as delay,
-     if(repeat = '', 3600,parseTimeDelta(repeat))           as repeat,
-     extractAllGroups(time,'(\d+)\:(\d+)\-(\d+)\:(\d+)')[1] as time,
-     replaceRegexpAll(replaceRegexpAll(
-        arrayStringConcat(arrayMap(x->if(has(mapKeys(subst),x),subst[x],x),splitByRegexp('[\\{\\}]',P.v))),
-       '((/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(--.*))',''),   -- https://blog.ostermiller.org/finding-comments-in-source-code-using-regular-expressions/
-       '([\r\n]+)',' ') as sql
-from (select * from SCH.Params order by updated_at desc limit 1 by key) as P
-join (select * from (select * from SCH.Lineage order by updated_at desc limit 1 by table)
-                     where processor in ['Step','Reload','Range','UniqId','sql']
-     ) as L
-on 'Template' || L.processor = P.key
-;
+WITH
+    dictGet('SCH.systemViews', 'create', trimBoth(x)) AS viewcode, map('table', splitByChar('#', L.table)[1], 'src',
+                                                                       dep[1], 'before', before, 'after', after,
+                                                                       'maxstep', maxstep, 'delay', toString(delay),
+                                                                       'repeat', toString(repeat), 'insert_into_table',
+                                                                       arrayStringConcat(arrayMap(
+                                                                               x -> concat('insert into ',
+                                                                                           splitByChar('#', L.table)[1],
+                                                                                           ' ', viewcode, '; \n'),
+                                                                               splitByChar(',', L.transforms))),
+                                                                       'insert_into_table_new',
+                                                                       arrayStringConcat(arrayMap(
+                                                                               x -> concat('insert into ',
+                                                                                           splitByChar('#', L.table)[1],
+                                                                                           '_new ', viewcode, '; \n'),
+                                                                               splitByChar(',', L.transforms)))) AS subst
+SELECT L.table,
+       arrayMap(x -> trimBoth(x), splitByChar(',', L.depends_on))     AS dep,
+       if(delay = '', 0, parseTimeDelta(delay))                       AS delay,
+       if(repeat = '', 3600, parseTimeDelta(repeat))                  AS repeat,
+       extractAllGroups(time, '(\\d+)\\:(\\d+)\\-(\\d+)\\:(\\d+)')[1] AS time,
+       replaceRegexpAll(replaceRegexpAll(arrayStringConcat(arrayMap(x -> if(has(mapKeys(subst), x), subst[x], x),
+                                                                    splitByRegexp('[\\{\\}]', P.v))),
+                                         '((/\\*([^*]|[\r\n]|(\\*+([^*/]|[\r\n])))*\\*+/)|(--.*))', ''), '([\r\n]+)',
+                        ' ')                                          AS sql
+FROM (
+         SELECT *
+         FROM SCH.Params
+         ORDER BY updated_at DESC
+         LIMIT 1 BY key
+         ) AS P
+         INNER JOIN
+     (
+         SELECT *
+         FROM (
+                  SELECT *
+                  FROM SCH.Lineage
+                  ORDER BY updated_at DESC
+                  LIMIT 1 BY table
+                  )
+         WHERE processor IN ['Step', 'Reload', 'Range', 'UniqId', 'sql', 'Incremental', 'Incremental2']
+         ) AS L ON concat('Template', L.processor) = P.key;

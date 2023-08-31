@@ -1,10 +1,9 @@
 #!/bin/bash
 
-LOG=scheduler.log
+LOG=./scheduler.log
 REQ=./sql-debug-cache/$1.sql
-HID=`hostname`-`hostid`
-#CLC='clickhouse-client -n'
-delimiter="\{set_insert_deduplication_token\}"
+HID=$(echo `hostname` | cut -d '-' -f -2)
+delimiter='{set_insert_deduplication_token}'
 
 echo set agi_topic=\'$1\'\; > $REQ
 cat >> $REQ
@@ -24,12 +23,12 @@ err=`echo "${SQL#*$delimiter}" | $CLC "--log_comment=$HID:$2" $token_param 3>&1 
 
 if [ "$err" != "" ] ;  then
 
-        printf '%(%Y-%m-%d %H:%M:%S)T\tWARN\t'"$1-$2"'\t'"$err"'\n' >> $LOG
+  printf '%(%Y-%m-%d %H:%M:%S)T\tWARN\t'"$1-$2"'\t'"$err"'\n' >> $LOG
 
-        printf "insert into ETL.ErrLog(topic,err) values(\'$1\',\'$err\')" | $CLC 2>> $LOG
+  printf "insert into ETL.ErrLog(topic,err) values(\'$1\',\'$err\')" | $CLC 2>> $LOG
 
-        printf "insert into SCH.Offsets select topic,last,rows,next,processor,\'$err\',hostid from SCH.Offsets where topic=\'$1\'" |
-                $CLC 2>> $LOG
+  printf "insert into SCH.Offsets select topic,last,rows,next,processor,\'$err\',hostid from SCH.Offsets where topic=\'$1\'" |
+    $CLC 2>> $LOG
 
 fi
 sleep 2

@@ -2,6 +2,11 @@
 insert into SCH.Params
 select 'TemplateUniqId',$$
 
+set receive_timeout=300;
+SYSTEM SYNC REPLICA {src} /*STRICT */;
+SELECT throwLog(count() > 0,'WARNING','Replication is Active')
+FROM clusterAllReplicas('replicated',system.replication_queue)
+WHERE database=extract('{src}', '(.*?)\.') AND table=extract('{src}', '\.(.*)');
 set max_partitions_per_insert_block=1000;
 insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
     with getTableDependencies(getSetting('agi_topic'),{delay}) as _deps,

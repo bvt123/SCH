@@ -1,10 +1,11 @@
 <config>
-    <host>10.5.0.205</host>
-    <user>clickhouse</user>
-    <database>SCH</database>
+    <host>clickhouse02.verekuu.com</host>
+    <user>daniel-bulgadaryan</user>
+    <password>Y3ygXh5Nz8/oxVSN</password>
+    <database>daniel</database>
     <secure>False</secure>
     <send_logs_level>fatal</send_logs_level>
     <calculate_text_stack_trace>0</calculate_text_stack_trace>
     <format>TSVRaw</format>
-    <stacktrace>0</stacktrace>
+    <stacktrace>0</stacktrace>nano
 </config>
