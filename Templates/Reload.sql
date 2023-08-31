@@ -32,6 +32,7 @@ drop table if exists {table}_new;
 create table {table}_new as {table};
 
 -- process
+{before}
 {insert_into_table_new}
 
 exchange tables {table}_new and {table};

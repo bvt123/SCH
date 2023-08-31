@@ -47,7 +47,7 @@ create or replace dictionary SCH.LineageDst on cluster replicated
 ) PRIMARY KEY table
 SOURCE(CLICKHOUSE(
     user 'dict'
-    password 'dict_pass'
+    password '[HIDDEN]'
     QUERY 'select * from SCH.ProcessTemplates'
     invalidate_query 'SELECT max(updated_at) from SCH.Lineage'
 ) )
