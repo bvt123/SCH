@@ -1,3 +1,6 @@
+### Offsets table
+- move to database.table:shard-replica#topic format
+- remove Offlest_Local (not needed)
 
 ### Examples
 - Offset (init insert)
@@ -42,6 +45,7 @@ From ETL to CDC the Clickhouse way
  - .my.conf
  - position table create and init insert
 
+### Altinity Sync Connector instead of MaxWell
 
 ###MySQL processor
 
