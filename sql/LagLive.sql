@@ -3,7 +3,7 @@ use SCH;
 --drop VIEW if exists LagLive on cluster replicated sync;
 -- CREATE LIVE VIEW LagLive with refresh 5 -- on cluster replicated
 
-CREATE or replace VIEW SCH.LagLive on cluster replicated as
+CREATE or replace VIEW SCH.LagLive on cluster '{cluster}' as
 WITH if(mins != 0, mins, now()) AS mins_now
 SELECT topic,
        ifNull(hosts.host_name, hostName())                           AS hostname,

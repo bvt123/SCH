@@ -1,7 +1,14 @@
-use SCH;
 
-drop table if exists SCH.Lineage on cluster replicated sync;
-create table if not exists SCH.Lineage on cluster replicated
+create or replace function getTableDependencies as (t,_delay) -> (
+    select least(min(snowflakeToDateTime(last) as _l), now() - interval _delay second), argMin(topic,_l)
+    from (select * from SCH.Offsets
+          where length(splitByChar(':',topic) as topic_host) = 1 or topic_host[2] = getMacro('shard')
+          order by last desc limit 1 by topic)
+    where has(dictGet('SCH.LineageDst','depends_on',t),splitByChar(':',topic)[1])
+);
+
+--drop table if exists SCH.Lineage on cluster '{cluster}' sync;
+create table if not exists SCH.Lineage on cluster '{cluster}'
 (
     table       String,
     depends_on  String,
@@ -17,26 +24,14 @@ create table if not exists SCH.Lineage on cluster replicated
     user        String materialized currentUser(),
     updated_at  DateTime materialized now()
 )
-engine = ReplicatedMergeTree('/clickhouse/replicated/SCH/Lineage2', '{replica}')
-order by tuple()
-;
-
-alter table SCH.Lineage on cluster replicated add column time String after maxstep;
+engine = ReplicatedMergeTree() order by tuple() ;
 
 -- clc -q "insert into SCH.Lineage(table, depends_on, processor, transforms, delay, repeat, maxstep) format TSV" < l
+insert into SCH.Lineage(table, depends_on, processor, transforms, delay, repeat, maxstep) values (
+  'Fact.ComputerTime','Stage.tc_user_log','Step','ETL.ComputerTimeTransform','5m','10m','1000000'
+);
 
-create or replace dictionary SCH.systemViews on cluster replicated
-(
-    name String,
-    create String
-) PRIMARY KEY name
-layout(complex_key_direct)
-SOURCE (CLICKHOUSE(user 'dict' password '[HIDDEN]' query '
-    select database || ''.'' || table as name,as_select as create from system.tables where engine=''View'' and {condition}
-'))
-;
-
-create or replace dictionary SCH.LineageDst on cluster replicated
+create or replace dictionary SCH.LineageDst on cluster '{cluster}'
 (
     table       String,
     depends_on Array(String),
@@ -46,12 +41,10 @@ create or replace dictionary SCH.LineageDst on cluster replicated
     sql        String
 ) PRIMARY KEY table
 SOURCE(CLICKHOUSE(
-    user 'dict'
-    password '[HIDDEN]'
     QUERY 'select * from SCH.ProcessTemplates'
     invalidate_query 'SELECT max(updated_at) from SCH.Lineage'
 ) )
 LAYOUT(complex_key_hashed())
 LIFETIME(300);
 
-system reload dictionary 'SCH.LineageDst' on cluster replicated;
+system reload dictionary 'SCH.LineageDst' on cluster '{cluster}';

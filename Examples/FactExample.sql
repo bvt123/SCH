@@ -1,29 +1,14 @@
 
---drop table Fact.Transaction;
-CREATE TABLE if not exists Fact.Transaction on cluster replicated
-(
-    `uuid` UUID,
-    `customer` UUID,
-    `credit_amount` Decimal(38, 3),
-    `debit_amount` Decimal(38, 3),
-    `created_at` DateTime64(3),
-    `currency` FixedString(3),
-    `category` LowCardinality(String),
-    `table` LowCardinality(String),
-    `id` UInt64 MATERIALIZED cityHash64(uuid),
-    `pos` DateTime64(3) MATERIALIZED now64(3),
-    INDEX ix1 created_at TYPE minmax GRANULARITY 2,
-    INDEX ix2 pos TYPE minmax GRANULARITY 2
-)
-ENGINE = ReplicatedReplacingMergeTree('/clickhouse/replicated/Fact/Transaction', '{replica}')
-PARTITION BY (table, toYYYYMM(created_at))
-ORDER BY (uuid)
-;
+CREATE TABLE if not exists Fact.Example (
+    id          UInt32,
+    data        String,
+    _pos        Int64 MATERIALIZED schId()
+) ENGINE = MergeTree()
+ORDER BY _pos;
 
-set agi_topic='Transaction';
-use Stage;
+set agi_topic='Example';
 
-create or replace view ETL.TransactionTransform as
+create or replace view ETL.ExampleTransform as
 with lt as (
           select *,
               reinterpretAsUUIDReversed(base64Decode(d.uuid) )      as _uuid,
@@ -50,7 +35,7 @@ where  -- row deduplication
        )
 ;
 
-drop table if exists ETL.__TransactionLog;
+drop table if exists ETL.__ExamplenLog;
 create materialized view if not exists ETL.__TransactionLog to ETL.Log as
 select 'Transaction' as topic,
        count()           as rows,
@@ -62,4 +47,12 @@ select 'Transaction' as topic,
            'category',countIf(category = '')
        )) as nulls,
        queryID()  as query_id
-from Fact.Transaction;
+from Fact.Example;
+
+--CREATE MATERIALIZED VIEW ETL.__BetSlipFlowPlacedOffsets TO SCH.Offsets AS
+SELECT
+    'Agi.BetSlipFlowPlaced:01:'|| getMacro('replica') AS topic,
+    max((pos, id)) AS last,
+    count() AS rows,
+    'Kafka' AS processor
+FROM Agi.BetSlipFlowPlaced;

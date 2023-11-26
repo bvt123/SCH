@@ -1,10 +1,10 @@
+use ETL;
+
 create or replace function throwLog as (cond,tag,mess) ->
     if(throwIf(cond, '|' || tag || '\t' || mess || '|')=0,'','');
 
-use ETL;
-
-drop table if exists LogNull on cluster replicated ;
-create table if not exists ETL.LogNull on cluster replicated
+drop table if exists LogNull on cluster '{cluster}' ;
+create table if not exists ETL.LogNull on cluster '{cluster}'
 (
     topic             LowCardinality(String),
     ts                DateTime default now(),
@@ -18,8 +18,8 @@ create table if not exists ETL.LogNull on cluster replicated
 engine = Null
 ;
 
-drop table if exists LogStore on cluster replicated ;
-create table if not exists ETL.LogStore on cluster replicated
+drop table if exists LogStore on cluster '{cluster}' ;
+create table if not exists ETL.LogStore on cluster '{cluster}'
 (
     topic             LowCardinality(String),
     ts                DateTime default now(),
@@ -36,8 +36,8 @@ ORDER BY (topic,ts)
 partition by toDate(ts)
 TTL ts + interval 1 month ;
 
-drop table if  exists  __LogStore on cluster replicated;
-create materialized view if not exists __LogStore on cluster replicated to LogStore  as
+drop table if  exists  __LogStore on cluster '{cluster}';
+create materialized view if not exists __LogStore on cluster '{cluster}' to LogStore  as
 select topic,
     sum(rows) as rows,
     max(max_id) as max_id,
@@ -48,11 +48,11 @@ select topic,
 from LogNull
 group by topic;
 
-drop table Log on cluster replicated;
-create table if not exists Log on cluster replicated
+drop table Log on cluster '{cluster}';
+create table if not exists Log on cluster '{cluster}'
     as LogNull ENGINE = Buffer(ETL, LogNull, 1, 10, 600, 10000, 1000000, 10000000, 100000000);
 
-create or replace view LogExt on cluster replicated as
+create or replace view LogExt on cluster '{cluster}' as
 select event_time,topic,
     round(query_duration_ms/1000) as dur,
     rows,
@@ -76,8 +76,8 @@ join (
 using query_id
 order by event_time desc
 ;
-
---drop table if exists ErrLogStore;
+/*
+drop table if exists ErrLogStore;
 create table if not exists ErrLogStore (
     ts DateTime default now(),
     topic LowCardinality(String),
@@ -100,3 +100,4 @@ where err not like 'NOJOBS%'
 group by error,topic
 order by time desc
 ;
+ */

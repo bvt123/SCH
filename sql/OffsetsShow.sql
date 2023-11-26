@@ -1,5 +1,5 @@
 -- nice to look at DataGrip
-create or replace view SCH.OffsetsShow on cluster replicated as
+create or replace view SCH.OffsetsShow on cluster '{cluster}' as
 select topic,
     if(next != '',toString(dateDiff(second,run,now())),'') as elapsed,
     run,
