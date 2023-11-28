@@ -1,4 +1,10 @@
-## SCH (Щ) project
+## SCH (Щ) - Incremental ETL processor for Clickhouse. 
+
+When the MatView ETL process became too complicated we need something else.
+
+ It builds wide Fact&Dim tables from highly normalized MySQL schema.  After syncing source tables to clickhouse stage DB, it waits several minutes to be sure that all data is received and joins several tables to store the result in Fact&Dims.   It requires running a bash script that executes insert-select queries.  Such script is very small and could be rewritten into any language (PHP too).
+Such ETL could solve all our hierarchical tables problems (no php code change is needed then) - I will use clickhouse hierarchical dictionaries to expand the hierarchy to flat tables.   The problem with the current approach based on Materialized Views is that MV can't wait until the dictionary reloads data.  With external bash SQL runner, it becomes possible.
+
 ### From ETL to CDC
 
 The ETL/ELT concept typically involves periodically loading and reloading data into a data warehouse, often daily. In contrast, CDC (change data capture) involves a continuous stream of data. We are attempting to transition from the former concept to the latter by running a process that builds tables over shorter periods of time, like several minutes and tens of minutes, adding incremental data to the tables.
