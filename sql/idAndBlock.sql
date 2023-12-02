@@ -7,5 +7,5 @@ create or replace function schId as () ->
   );
 
 create or replace function schBlock as (_p) -> (
-     _p > ((select last,next from ETL.Offsets where topic=getSetting('sch_topic')) as _ln).1 and _p <= _ln.2
+     _p > ((select last,next from SCH.Offsets where topic=getSetting('sch_topic')) as _ln).1 and _p <= _ln.2
 );

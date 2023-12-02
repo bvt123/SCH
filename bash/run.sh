@@ -3,6 +3,7 @@
 LOG=$HOME/scheduler.log
 #LOG=/dev/stdout
 STEP=$HOME/scheduler/step.sh
+HID=`hostname`-`hostid`
 
 printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\tscheduler started\n' >> $LOG
 
@@ -16,12 +17,9 @@ process() {
 }
 
 while true ; do
-#  clickhouse-client -q  "watch SCH.LagLive" -f TSVRaw | \
-  clickhouse-client -q  "select * from SCH.LagLive" -f TSVRaw | \
+  clickhouse-client -q  "select * from SCH.Tasks" -f TSVRaw | \
   while IFS=$'\t' read -r topic host sql ts version; do
        process $topic "$sql" $version $host
   done
-#  printf '\010%(%Y-%m-%d %H:%M:%S)T\tWARN\twatch restarted\n' >> $LOG
-#  printf '.' >> $LOG
   sleep 1
 done

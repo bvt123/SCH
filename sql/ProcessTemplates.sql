@@ -1,24 +1,19 @@
 create or replace view SCH.ProcessTemplates on cluster '{cluster}' as
-WITH dictGet('SCH.systemViews', 'create', trimBoth(x)) AS viewcode,
-    map('table',    splitByChar('#', L.table)[1],
-        'src',      dep[1],
+WITH map('topic', L.table,
+        'table',    (splitByChar('#', L.table)[1] as _t),
+        'name',     splitByChar('.',_t)[2],
+        'source',   source,
         'before',   before,
         'after',    after,
-        'maxstep',  maxstep,
+        'maxrows',  maxrows,
         'delay',    toString(delay),
         'repeat',   toString(repeat),
-        'insert_into_table', arrayStringConcat(arrayMap(x ->
-            concat('insert into ', splitByChar('#', L.table)[1], ' ', viewcode, '; \n'),
-                                   splitByChar(',', L.transforms))),
-        'insert_into_table_new', arrayStringConcat(arrayMap(x ->
-            concat('insert into ', splitByChar('#', L.table)[1], '_new ', viewcode, '; \n'),
-                                   splitByChar(',', L.transforms))),
         'cluster','{cluster}'
         ) AS subst
-SELECT L.table,
-    arrayMap(x -> trimBoth(x), splitByChar(',', L.depends_on))     AS dep,
-    if(delay = '', 0, parseTimeDelta(delay))                       AS delay,
-    if(repeat = '', 3600, parseTimeDelta(repeat))                  AS repeat,
+SELECT L.table, L.source,
+    arrayMap(x -> trimBoth(x), splitByChar(',', L.dependencies))   AS dependencies,
+    parseTimeDelta(delay)                                          AS delay,
+    parseTimeDelta(repeat)                                         AS repeat,
     extractAllGroups(time, '(\\d+)\\:(\\d+)\\-(\\d+)\\:(\\d+)')[1] AS time,
     replaceRegexpAll(replaceRegexpAll(arrayStringConcat(
         arrayMap(x -> if(has(mapKeys(subst), x), subst[x], x),

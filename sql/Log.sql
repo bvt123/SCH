@@ -1,10 +1,9 @@
-use ETL;
 
 create or replace function throwLog as (cond,tag,mess) ->
     if(throwIf(cond, '|' || tag || '\t' || mess || '|')=0,'','');
 
-drop table if exists LogNull on cluster '{cluster}' ;
-create table if not exists ETL.LogNull on cluster '{cluster}'
+drop table if exists ETL.LogNull on cluster '{cluster}' sync;
+create table exists ETL.LogNull on cluster '{cluster}'
 (
     topic             LowCardinality(String),
     ts                DateTime default now(),
@@ -18,8 +17,8 @@ create table if not exists ETL.LogNull on cluster '{cluster}'
 engine = Null
 ;
 
-drop table if exists LogStore on cluster '{cluster}' ;
-create table if not exists ETL.LogStore on cluster '{cluster}'
+drop table if exists ETL.LogStore on cluster '{cluster}' sync ;
+create table ETL.LogStore on cluster '{cluster}'
 (
     topic             LowCardinality(String),
     ts                DateTime default now(),
@@ -36,8 +35,8 @@ ORDER BY (topic,ts)
 partition by toDate(ts)
 TTL ts + interval 1 month ;
 
-drop table if  exists  __LogStore on cluster '{cluster}';
-create materialized view if not exists __LogStore on cluster '{cluster}' to LogStore  as
+drop table if exists  ETL.__LogStore on cluster '{cluster}' sync;
+create materialized view ETL.__LogStore on cluster '{cluster}' to LogStore  as
 select topic,
     sum(rows) as rows,
     max(max_id) as max_id,
@@ -48,11 +47,11 @@ select topic,
 from LogNull
 group by topic;
 
-drop table Log on cluster '{cluster}';
-create table if not exists Log on cluster '{cluster}'
+drop table if exists ETL.Log on cluster '{cluster}' sync;
+create table if not exists ETL.Log on cluster '{cluster}'
     as LogNull ENGINE = Buffer(ETL, LogNull, 1, 10, 600, 10000, 1000000, 10000000, 100000000);
 
-create or replace view LogExt on cluster '{cluster}' as
+create or replace view ETL.LogExt on cluster '{cluster}' as
 select event_time,topic,
     round(query_duration_ms/1000) as dur,
     rows,
@@ -70,7 +69,7 @@ from (select topic,rows,max_ts,arrayJoin(query_ids) as query_id
 join (
     select toUUID(query_id) as query_id,event_time,
         query_duration_ms,read_rows,written_rows,memory_usage
-    from system.query_log
+    from system.query_log   --clusterAllReplicas ?
     where event_time > now() - interval 2 day and type = 'QueryFinish'
     )  as ql
 using query_id

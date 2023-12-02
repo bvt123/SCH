@@ -17,6 +17,7 @@ PRIMARY KEY topic;
 -- why do we need local??
 create table if not exists OffsetsLocal on cluster replicated as Offsets ENGINE = EmbeddedRocksDB primary key (topic);
 
+-- why do we need it?
 create or replace dictionary SCH.OffsetsDict on cluster replicated
 (
     topic       String,
