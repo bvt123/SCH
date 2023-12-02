@@ -1,13 +1,14 @@
 
-create or replace function getMaxProcessTime as () -> (
-    with getSetting('sch_topic') as _t,
-         dictGet('SCH.LineageDict','delay',_t) as _delay
-    select if((least(min(snowflakeToDateTime(last) as _l), now() - interval _delay second) as _m) != toDateTime(0),_m,toDateTime('2100-01-01 00:00:00')),
-           argMin(topic,_l)
-    from (select * from SCH.Offsets
-          where length(splitByChar(':',topic) as topic_host) = 1 or topic_host[2] = getMacro('shard')
-          order by last desc limit 1 by topic)
-    where has(dictGet('SCH.LineageDict','dependencies',_t),splitByChar(':',topic)[1])
+create or replace function getMaxProcessTime as (_topic,_delay) -> (
+    select if((least(min(last), now() - interval _delay second) as _m) != toDateTime(0),_m,toDateTime('2100-01-01 00:00:00')),
+           argMin(topic,last)
+    from ( select * from (
+            select splitByChar(':',topic)[1] as table, snowflakeToDateTime(last) as last from SCH.Offsets
+            where length(splitByChar(':',topic) as topic_shard) = 1 or topic_shard[2] = getMacro('shard') )
+              union all
+            select database||'.'||name as table, last_successful_update_time as last from system.dictionaries where last > 0
+    )
+    where has(dictGet('SCH.LineageDict','dependencies',_topic),table)
 );
 
 drop table if exists SCH.Lineage on cluster '{cluster}' sync;

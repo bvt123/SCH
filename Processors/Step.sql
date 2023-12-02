@@ -17,7 +17,6 @@
  {delay}   - slow down data transform for specified amount of time - parseTimeDelta('11s+22min')
  {repeat}
  {before}                            -- before SQL
- !!{insert_into_table}                 -- Process
  {after}                             -- after SQL
  {cluster}  -  just a {cluster} string (resolved by Clickhouse config macro)
 
@@ -35,8 +34,8 @@ set receive_timeout=300; SYSTEM SYNC REPLICA {source} ;
 
 set max_partitions_per_insert_block=1000;
 insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
-    with getMaxProcessTime() as _upto,
-         ( select last from SCH.Offsets where topic=getSetting('sch_topic') ) as _last,
+    with getMaxProcessTime('{topic}','{delay}') as _upto,
+         ( select last from SCH.Offsets where topic='{topic}' ) as _last,
          data as ( select _pos, splitByChar('_', _part) as block
               from {source}
               where _pos > _last and snowflakeToDateTime(_pos) < _upto.1
@@ -49,7 +48,7 @@ insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
         if(rows > 0, 'processing', _upto.2 )          as state,
         splitByChar(':',getSetting('log_comment'))[1] as hostid
     from SCH.Offsets
-    where topic=getSetting('sch_topic')
+    where topic='{topic}'
       and next = 0
       and throwLog(check, 'ERROR','Block Sequence Mismatch. It could be a high replication lag.') = ''
 ;
@@ -58,13 +57,13 @@ select * from SCH.OffsetsCheck;     -- check conditions and throw nojobs to run 
 
 insert into {table} select * from ETL.{name}Transform;
 
-select now(), 'INFO',getSetting('sch_topic') || '-' || splitByChar(':',getSetting('log_comment'))[2],
+select now(), 'INFO','{topic}' || '-' || splitByChar(':',getSetting('log_comment'))[2],
     'processed',
     sum(rows), max(max_ts),
-    formatReadableTimeDelta(dateDiff(second , (select run from SCH.Offsets where topic=getSetting('sch_topic')),now())),
+    formatReadableTimeDelta(dateDiff(second , (select run from SCH.Offsets where topic='{topic}'),now())),
     sumMap(nulls)
 from ETL.Log
-where topic=getSetting('sch_topic')
+where topic='{topic}'
      and ts > now() - interval 1 hour
 group by query_id
 order by max(ts) desc
@@ -73,7 +72,7 @@ limit 1;
 insert into SCH.Offsets (topic, last, rows, processor, state)
     select topic, next, rows,processor, toString(dateDiff(minute, snowflakeToDateTime(last), snowflakeToDateTime(next))) || 'min'
     from SCH.Offsets
-    where topic=getSetting('sch_topic')
+    where topic='{topic}'
       and next != 0
 ;
 
