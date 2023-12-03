@@ -44,14 +44,14 @@ select topic,
     max(max_ts) as max_ts,
     sumMap(nulls) as nulls,
     arrayFilter(x->x != toUUID('00000000-0000-0000-0000-000000000000'),groupArray(query_id)) as query_ids
-from LogNull
+from ETL.LogNull
 group by topic;
 
 drop table if exists ETL.Log on cluster '{cluster}' sync;
 create table if not exists ETL.Log on cluster '{cluster}'
-    as LogNull ENGINE = Buffer(ETL, LogNull, 1, 10, 600, 10000, 1000000, 10000000, 100000000);
+    as ETL.LogNull ENGINE = Buffer(ETL, ETL.LogNull, 1, 10, 600, 10000, 1000000, 10000000, 100000000);
 
-create or replace view ETL.LogExt on cluster '{cluster}' as
+--create or replace view ETL.LogExt on cluster '{cluster}' as
 select event_time,topic,
     round(query_duration_ms/1000) as dur,
     rows,
@@ -75,20 +75,22 @@ join (
 using query_id
 order by event_time desc
 ;
+
 /*
-drop table if exists ErrLogStore;
-create table if not exists ErrLogStore (
+drop table if exists ErrLogStore on cluster '{cluster}';
+create table if not exists ErrLogStore on cluster '{cluster}' (
     ts DateTime default now(),
     topic LowCardinality(String),
     err String
 ) engine = MergeTree order by ts;
 
-drop table if exists ErrLog;
-create table if not exists ErrLog as ErrLogStore
+drop table if exists ErrLog on cluster '{cluster}';
+create table if not exists ErrLog on cluster '{cluster}'
+    as ErrLogStore
 ENGINE = Buffer(ETL, ErrLogStore, 16, 10, 100, 10000, 1000000, 10000000, 100000000);
 
-
-create or replace view ErrLogExt as
+drop view ErrLogExt on cluster '{cluster}';
+create or replace view ErrLogExt on cluster '{cluster}' as
 select max(ts) as time,
     topic,
     count() c,
@@ -99,4 +101,4 @@ where err not like 'NOJOBS%'
 group by error,topic
 order by time desc
 ;
- */
+*/

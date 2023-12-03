@@ -2,10 +2,9 @@
  find topics ready to be executed. check dependencies and time schedule
  topic format - Fact.Table:shard#tag
  */
-
---CREATE or replace VIEW SCH.Tasks on cluster '{cluster}' as
-WITH if(mins != 0, mins, now()) AS mins_now,
-     splitByChar(':', topic)[1] as table,
+select * from SCH.Tasks;
+CREATE or replace VIEW SCH.Tasks on cluster '{cluster}' as
+WITH splitByChar(':', topic)[1] as table,
      toUInt8OrZero(splitByChar(':', topic)[2]) as topic_shard,
   O1 as (
       SELECT topic,
@@ -27,13 +26,8 @@ WITH if(mins != 0, mins, now()) AS mins_now,
       SELECT table, snowflakeToDateTime(last) as last FROM SCH.Offsets WHERE processor != 'deleted'
         union all
       select database||'.'||name,last_successful_update_time last from system.dictionaries where last > 0
-  )
-SELECT topic,
-       ifNull(hosts.host_name, hostName())                           AS hostname,
-       sql,
-       now()                                                         AS ts,
-       toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00')) AS seq
-FROM (
+  ),
+  updates as (
          SELECT O1.topic                           AS topic,
                 any(O1.processor)                  AS processor,
                 any(O1.run)                        AS run,
@@ -47,17 +41,27 @@ FROM (
                 minIf(O2.last, O2.last != 0)       AS mins
          FROM O1 LEFT JOIN O2 ON O1.dependencies = O2.table
          GROUP BY topic
-     ) AS updates
-     LEFT JOIN ( SELECT host_name, shard_num FROM system.clusters WHERE cluster = 'sharded') AS hosts
-     ON shard = hosts.shard_num
+    )
+SELECT topic,
+       if(hosts.host_name != '', hosts.host_name, hostName())          AS hostname,
+                                                                          sql,
+       least(if(mins = 0, now(), mins), now() - interval delay second) AS upto,
+       now()                                                           AS ts,
+       toUInt32(now()) - toUInt32(toDateTime('2023-01-01 00:00:00'))   AS seq,
+       hostid
+FROM  updates
+-- for shard processing need a resolvable host_name from system.clusters
+LEFT JOIN ( SELECT host_name, shard_num FROM system.clusters WHERE cluster = getMacro('cluster')) AS hosts
+ON shard = hosts.shard_num
 where (
-       processor like 'Full%' and hostid = ''
-    or last < mins_now and datediff(second , run, now()) > repeat
-    or last < now() - interval 1 day
+       processor like 'Full%'
+    or last < upto and datediff(second , run, now()) > repeat
+    or last < now() - interval 1 day   --??
       )
-  and (
+  and ( -- time of day limiting
        length(time) = 0
     or Hour(now())>= time[1] and Minute(now()) >= time[2] and Hour(now())<= time[3] and Minute(now()) <= time[4]
     )
+;
 
-SETTINGS join_use_nulls = 1;
+

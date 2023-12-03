@@ -14,14 +14,14 @@ create or replace function getMaxProcessTime as (_topic,_delay) -> (
 drop table if exists SCH.Lineage on cluster '{cluster}' sync;
 create table  SCH.Lineage on cluster '{cluster}'
 (
-    table         String,
-    source        String,
+    table         String,                -- dest table
+    source        String,                -- main source table
     processor     String default 'Step',
-    delay         String default '0s',   -- delay processing to compensate ingesting lag
+    delay         String default '0s',   -- delay processing to compensate ingesting lag. e.x '11s+22min'
     dependencies  String,                -- delay processing  by checking update time of dependant objects (tables or dicts)
     repeat        String default '1h',
     maxrows       String default '1000000',
-    time          String,                -- in format 0:30-6:00
+    time          String,                -- time of day limitations. e.x. 06:00-12:00
     comment       String,
     before        String,
     after         String,
