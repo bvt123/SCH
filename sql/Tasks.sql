@@ -2,7 +2,6 @@
  find topics ready to be executed. check dependencies and time schedule
  topic format - Fact.Table:shard#tag
  */
-select * from SCH.Tasks;
 CREATE or replace VIEW SCH.Tasks on cluster '{cluster}' as
 WITH splitByChar(':', topic)[1] as table,
      toUInt8OrZero(splitByChar(':', topic)[2]) as topic_shard,

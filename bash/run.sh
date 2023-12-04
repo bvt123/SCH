@@ -11,7 +11,7 @@ process() {
     export CLC="clickhouse-client -n -f TSV --param_topic=${1}_p"   # -h $4 for shard processing
     if ! ps ax | grep "$CLC" | grep -v grep > /dev/null
     then
-        printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\t'"$1-$3"'\tstarted\n' >> $LOG
+        printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\t'"$1-$2"'\tstarted\n' >> $LOG
         echo  "$5" | $STEP  "$1" "$2" "$3" &
     fi
 }
