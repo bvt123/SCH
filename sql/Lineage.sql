@@ -1,16 +1,4 @@
 
-create or replace function getMaxProcessTime as (_topic,_delay) -> (
-    select if((least(min(last), now() - interval _delay second) as _m) != toDateTime(0),_m,toDateTime('2100-01-01 00:00:00')),
-           argMin(topic,last)
-    from ( select * from (
-            select splitByChar(':',topic)[1] as table, snowflakeToDateTime(last) as last from SCH.Offsets
-            where length(splitByChar(':',topic) as topic_shard) = 1 or topic_shard[2] = getMacro('shard') )
-              union all
-            select database||'.'||name as table, last_successful_update_time as last from system.dictionaries where last > 0
-    )
-    where has(dictGet('SCH.LineageDict','dependencies',_topic),table)
-);
-
 drop table if exists SCH.Lineage on cluster '{cluster}' sync;
 create table  SCH.Lineage on cluster '{cluster}'
 (
@@ -31,7 +19,7 @@ create table  SCH.Lineage on cluster '{cluster}'
 )
 engine = ReplicatedMergeTree() order by tuple() ;
 
---insert into SCH.Lineage(table, source) values ('Fact.ComputerTime','Stage.tc_user_log1');
+--insert into SCH.Lineage(table, source) values ('Fact.Example','Stage.example');
 
 --drop dictionary SCH.LineageDict on cluster '{cluster}';
 create or replace dictionary SCH.LineageDict on cluster '{cluster}'
@@ -52,3 +40,17 @@ LAYOUT(complex_key_hashed())
 LIFETIME(300);
 
 system reload dictionary 'SCH.LineageDict' on cluster '{cluster}';
+
+/*
+create or replace function getMaxProcessTime as (_topic,_delay) -> (
+    select if((least(min(last), now() - interval _delay second) as _m) != toDateTime(0),_m,toDateTime('2100-01-01 00:00:00')),
+           argMin(topic,last)
+    from ( select * from (
+            select splitByChar(':',topic)[1] as table, snowflakeToDateTime(last) as last from SCH.Offsets
+            where length(splitByChar(':',topic) as topic_shard) = 1 or topic_shard[2] = getMacro('shard') )
+              union all
+            select database||'.'||name as table, last_successful_update_time as last from system.dictionaries where last > 0
+    )
+    where has(dictGet('SCH.LineageDict','dependencies',_topic),table)
+);
+ */

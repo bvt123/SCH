@@ -1,58 +1,69 @@
+create table Fact.Example ON CLUSTER '{cluster}'
+(
+    account_id      UInt32,
+    user_id         UInt32,
+    task_id         UInt32,
 
-CREATE TABLE if not exists Fact.Example (
-    id          UInt32,
-    data        String,
-    _pos        Int64 MATERIALIZED schId()
-) ENGINE = MergeTree()
-ORDER BY _pos;
+    end_date        Date CODEC (Delta,ZSTD(1)),
+    end_time        DateTime,
 
-set agi_topic='Example';
+    time_span       UInt32,
+    time_span_s     alias sign*time_span,
+    time_span_c     alias sign,
 
-create or replace view ETL.ExampleTransform as
-with lt as (
-          select *,
-              reinterpretAsUUIDReversed(base64Decode(d.uuid) )      as _uuid,
-              toDecimal64OrZero(toString(d.credit_amount),3) as credit_amount,
-              toDecimal64OrZero(toString(d.debit_amount),3) as debit_amount,
-              d.created,d.account_uuid
-          from Stage.Transaction where schBlock()
+    updated_at      DateTime materialized now(),
+    _version        UInt64,
+    sign            Int8 default 1,
+    PROJECTION month_user  (
+        select toStartOfMonth(end_date), user_id, sum(time_span_s), sum(time_span_c)
+        group by toStartOfMonth(end_date), user_id
     )
-select * from (
-     select _uuid                                                 as uuid,
-            reinterpretAsUUIDReversed(la.user_uuid)               as customer,
-            credit_amount,
-            debit_amount,
-            parseDateTime64BestEffortOrZero(d.created)            as created_at,
-            la.currency                                           as currency
-    from lt
-    left join Stage.Account as la
-    on la.key = base64Decode(d.account_uuid) || '-' || lt.brand
-    settings join_algorithm='direct'
-) as lta
-where  -- row deduplication
-       (uuid) not in (
-            select uuid from Fact.Transaction where (uuid) in (select _uuid from lt )
-       )
+) engine = ReplicatedVersionedCollapsingMergeTree(sign, _version)
+PARTITION BY toYYYYMM(end_date)
+ORDER BY (account_id, end_date, mortonEncode(user_id, task_id), end_time)
+SETTINGS min_age_to_force_merge_seconds=9000,min_age_to_force_merge_on_partition_only=1 ;
+
+--drop view if exists ETL.ComputerTimeTransform ON CLUSTER '{cluster}';
+set sch_topic='Fact.Example';
+create or replace view ETL.ExampleTransform ON CLUSTER '{cluster}' as
+with new as ( select getAccountForUser(user_id) as account_id,
+                toUInt32(user_id)         user_id,
+                toUInt32(task_id)         task_id,
+                end_time,
+                time_span,
+                end_date,
+                _sign, _version
+             from Stage.example
+             where schBlock(_pos)
+             order by _version desc limit 1 by (end_date, user_id, task_id, end_time)
+            ),
+     old AS (
+        SELECT *, arrayJoin([-1,1]) AS _sign -- could be 0 because join is left
+        FROM Fact.ComputerTime
+        PREWHERE (account_id, end_date, user_id, task_id, end_time) IN
+         ( SELECT account_id, end_date, user_id, task_id, end_time FROM new )
+     )
+select account_id, user_id, application_id, task_id,
+     end_date,  end_time,
+     if(old._sign = -1, old.time_span, new.time_span)             AS time_span,
+                                                                     _version,
+     if(old._sign = -1, -1, 1)                                    AS sign
+from new left join old using (end_date, user_id, application_id, end_time)
+where not (sign = -1 and old._sign != -1)
 ;
 
-drop table if exists ETL.__ExamplenLog;
-create materialized view if not exists ETL.__TransactionLog to ETL.Log as
-select 'Transaction' as topic,
-       count()           as rows,
-       max(created_at)   as max_ts,
-       min(created_at)   as min_ts,
-       mapFilter((k, v) -> (v != 0),map(
-           'created_at',countIf(created_at = 0),
-           'customer',countIf(customer = toUUID('00000000-0000-0000-0000-000000000000')),
-           'category',countIf(category = '')
-       )) as nulls,
-       queryID()  as query_id
-from Fact.Example;
-
---CREATE MATERIALIZED VIEW ETL.__BetSlipFlowPlacedOffsets TO SCH.Offsets AS
-SELECT
-    'Agi.BetSlipFlowPlaced:01:'|| getMacro('replica') AS topic,
-    max((pos, id)) AS last,
-    count() AS rows,
-    'Kafka' AS processor
-FROM Agi.BetSlipFlowPlaced;
+drop view if exists ETL.Log_Example on cluster '{cluster}';
+create materialized view ETL.Log_Example on cluster '{cluster}'
+    to ETL.Log as
+select getSetting('sch_topic')        as topic,
+       count()         as rows,
+       max(user_id)    as max_id,
+       max(end_time)   as max_ts,
+       min(end_time)   as min_ts,
+/*       if(any(sign) = 1, mapFilter((k, v) -> (v != 0 and k !='login'or k='login' and v/count() > 0.01 ),map(
+           'repeated',  toUInt64(count() - uniqExact(bet_slip_id)),
+           'coupon',    countIf(isZeroOrNull(coupon_id))
+         )), map()) as nulls,*/
+       toUUIDOrDefault(queryID())  as query_id
+from Fact.Example
+;
