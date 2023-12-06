@@ -1,17 +1,28 @@
 #!/bin/bash
 
-LOG=$HOME/scheduler.log
-#LOG=/dev/stdout
+export LOG=/var/log/scheduler/scheduler.log
+STEP=$HOME/scheduler/step.sh
+export HID=`hostname`-`hostid`
 
-err=`$CLC --log_comment=$HID:$2 "--param_upto=${3}" 3>&1 1>>$LOG 2>&3 | grep Exception | tr "'" " " | sed -e 's/.*Exception: |\(.*\)|: while.*/\1/'`
+printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\tscheduler started\n' >> $LOG
 
-if [ "$err" != "" ] ;  then
+process() {
+    export CLC="clickhouse-client -n -f TSV --param_topic=${1}_p"   # -h $4 for shard processing
+    if ! ps ax | grep "$CLC" | grep -v grep > /dev/null
+    then
+        printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\t'"$1-$2"'\tstarted\n' >> $LOG
+        ( echo  "$5" | $STEP  "$1" "$2" "$3" ) &
+    fi
+}
 
-        printf '%(%Y-%m-%d %H:%M:%S)T\tWARN\t'"$1-$2"'\t'"$err"'\n' >> $LOG
-#        printf "insert into ETL.ErrLog(topic,err) values(\'$1\',\'$err\')" | $CLC 2>> $LOG
-        printf "insert into SCH.Offsets select topic,last,rows,next,processor,\'$err\',hostid from SCH.Offsets where topic=\'$1\'" |
-                $CLC 2>> $LOG
-
-fi
-sleep 1
-
+while true ; do
+  clickhouse-client -q  "select * from SCH.Tasks" -f TSVRaw | \
+  while IFS=$'\t' read -r topic host sql upto ts version hostid; do
+    if [[ -z "$hostid" ]] || [[ "$hostid" == "$HID" ]]; then
+       process "$topic" "$version" "$upto" $host "$sql"
+    else
+      printf '%(%Y-%m-%d %H:%M:%S)T\tWARNING\t$topic served on $hostid\n' >> $LOG
+    fi
+  done
+  sleep 1
+done

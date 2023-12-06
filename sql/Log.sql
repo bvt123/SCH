@@ -1,4 +1,4 @@
-
+-- the output is processed by step.sh send_logs_level='fatal' is needed
 create or replace function throwLog as (cond,tag,mess) ->
     if(throwIf(cond, '|' || tag || '\t' || mess || '|')=0,'','');
 

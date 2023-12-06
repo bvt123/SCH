@@ -1,12 +1,13 @@
 create or replace view SCH.ProcessTemplates on cluster '{cluster}' as
 WITH ['Step'] as processors,   -- filters only needed processors from Lineage
      map('topic',   L.table,
-        'table',    (splitByChar('#', L.table)[1] as _t),
+        'table',    (splitByRegexp('[#:]', L.table)[1] as _t),
+        'tag',      splitByChar('#', L.table)[2],
         'name',     splitByChar('.',_t)[2],
         'source',   source,
         'before',   before,
         'after',    after,
-        'maxrows',  maxrows
+        'step',     step
      ) AS subst
 SELECT L.table, L.source,
     arrayMap(x -> trimBoth(x), splitByChar(',', L.dependencies))   AS dependencies,

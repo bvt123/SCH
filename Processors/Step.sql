@@ -13,7 +13,7 @@
  @topic@   - in format DB.table#xxx .....
  @table@   - dest table
  @source@  - source table
- @maxrows@ - max rows to process
+ @step@ - how much data to process on one Transform, could be number of rows of seconds or anything else
  @before@                            -- before SQL
  @after@                             -- after SQL
 
@@ -26,7 +26,7 @@ set sch_topic = '@topic@';
 --set log_comment='aafaf';  -- for debug
 
 -- wait and check for replication lag
-set receive_timeout=300; SYSTEM SYNC REPLICA @source@ ;
+--set receive_timeout=300; SYSTEM SYNC REPLICA @source@ ;
 --SELECT throwLog(count() > 0,'WARNING','Replication is Active') FROM clusterAllReplicas('@cluster@',system.replication_queue) WHERE database || '.' || table = '@source@';
 
 set max_partitions_per_insert_block=0;
@@ -36,11 +36,11 @@ insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
               from @source@
               where _pos > _last and snowflakeToDateTime(_pos) < {upto:DateTime}
              ),
-    (select count(), max(_pos) from (select _pos from data order by _pos limit @maxrows@)) as stat,
+    (select count(), max(_pos) from (select _pos from data order by _pos limit @step@)) as stat,
     (select checkBlockSequence(groupUniqArray([toUInt32(block[2]),toUInt32(block[3])])) from data ) as check
     select topic, stat.2, last,
         stat.1                                        as rows,
-        if(rows >= @maxrows@,'FullStep','Step')       as processor,
+        if(rows >= @step@,'FullStep','Step')       as processor,
         if(rows > 0, 'processing', 'delayed' )        as state,
         splitByChar(':',getSetting('log_comment'))[1] as hostid
     from SCH.Offsets

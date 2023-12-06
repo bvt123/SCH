@@ -8,7 +8,7 @@ create table  SCH.Lineage on cluster '{cluster}'
     delay         String default '0s',   -- delay processing to compensate ingesting lag. e.x '11s+22min'
     dependencies  String,                -- delay processing  by checking update time of dependant objects (tables or dicts)
     repeat        String default '1h',
-    maxrows       String default '1000000',
+    step          String default '1000000', -- how much data to process on one Transform, could be number of rows of seconds or anything else
     time          String,                -- time of day limitations. e.x. 06:00-12:00
     comment       String,
     before        String,

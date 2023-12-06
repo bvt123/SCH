@@ -1,7 +1,6 @@
 #!/bin/bash
 
-LOG=$HOME/scheduler.log
-#LOG=/dev/stdout
+export LOG=/var/log/scheduler/scheduler.log
 STEP=$HOME/scheduler/step.sh
 export HID=`hostname`-`hostid`
 
@@ -12,7 +11,7 @@ process() {
     if ! ps ax | grep "$CLC" | grep -v grep > /dev/null
     then
         printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\t'"$1-$2"'\tstarted\n' >> $LOG
-        echo  "$5" | $STEP  "$1" "$2" "$3" &
+        ( echo  "$5" | $STEP  "$1" "$2" "$3" ) &
     fi
 }
 
