@@ -1,22 +1,6 @@
 /*
  ETL Step for processing a block of data when it got ready after dependencies check.
  That is dynamic SQL code with @variables@ substitution
-
- Before calling that code by clickhouse-client (or any other SQL code runner),
-  two settings should be set:
- - sch_topic  - id of the object we are going to build
- - log_comment as hostid:runid
-    hostid used for mutex exclusion if Scheduler runs on different servers
-    runid is only for nice-looking Scheduler logs with correlated lines
-
- Params:
- @topic@   - in format DB.table#xxx .....
- @table@   - dest table
- @source@  - source table
- @step@ - how much data to process on one Transform, could be number of rows of seconds or anything else
- @before@                            -- before SQL
- @after@                             -- after SQL
-
  */
 
 
@@ -25,8 +9,7 @@ select 'DAG_Step',$$
 set sch_topic = '@topic@';
 --set log_comment='aafaf';  -- for debug
 
--- wait and check for replication lag
---set receive_timeout=300; SYSTEM SYNC REPLICA @source@ ;
+--set receive_timeout=300; SYSTEM SYNC REPLICA @source@ ; --wait for parts fetched from other replica
 --SELECT throwLog(count() > 0,'WARNING','Replication is Active') FROM clusterAllReplicas('@cluster@',system.replication_queue) WHERE database || '.' || table = '@source@';
 
 set max_partitions_per_insert_block=0;
