@@ -1,9 +1,9 @@
 /*
  find topics ready to be executed. check dependencies and time schedule
- topic format - Fact.Table:shard#tag
+ topic format - Fact.Table#tag:shard
  */
 CREATE or replace VIEW SCH.Tasks on cluster '{cluster}' as
-WITH splitByChar(':', topic)[1] as table,
+WITH splitByChar(':', topic)[1] as table_tag,
      toUInt8OrZero(splitByChar(':', topic)[2]) as topic_shard,
   O1 as (
       SELECT topic,
@@ -12,17 +12,17 @@ WITH splitByChar(':', topic)[1] as table,
              hostid,
              snowflakeToDateTime(last)                                  as last,
              topic_shard,
-             dictGet('SCH.LineageDict', 'sql', table)                   AS sql,
-             dictGet('SCH.LineageDict', 'repeat', table)                AS repeat,
-             dictGet('SCH.LineageDict', 'delay', table)                 AS delay,
-             dictGet('SCH.LineageDict', 'time', table)                  AS time,
-             arrayJoin(arrayPushFront(dictGet('SCH.LineageDict', 'dependencies', table),
-                 dictGet('SCH.LineageDict', 'source', table))) AS dependencies
+             dictGet('SCH.LineageDict', 'sql', table_tag)                   AS sql,
+             dictGet('SCH.LineageDict', 'repeat', table_tag)                AS repeat,
+             dictGet('SCH.LineageDict', 'delay', table_tag)                 AS delay,
+             dictGet('SCH.LineageDict', 'time', table_tag)                  AS time,
+             arrayJoin(arrayPushFront(dictGet('SCH.LineageDict', 'dependencies', table_tag),
+                 dictGet('SCH.LineageDict', 'source', table_tag))) AS dependencies
       FROM SCH.Offsets
       WHERE sql != ''
   ),
   O2 as (
-      SELECT table, snowflakeToDateTime(last) as last FROM SCH.Offsets WHERE processor != 'deleted'
+      SELECT table_tag as tt, snowflakeToDateTime(last) as last FROM SCH.Offsets WHERE processor != 'deleted'
         union all
       select database||'.'||name,last_successful_update_time last from system.dictionaries where last > 0
   ),
@@ -38,7 +38,7 @@ WITH splitByChar(':', topic)[1] as table,
                 any(O1.sql)                        AS sql,
                 any(O1.last)                       AS last,
                 minIf(O2.last, O2.last != 0)       AS mins
-         FROM O1 LEFT JOIN O2 ON O1.dependencies = O2.table
+         FROM O1 LEFT JOIN O2 ON O1.dependencies = O2.tt
          GROUP BY topic
     )
 SELECT topic,
@@ -55,7 +55,6 @@ ON shard = hosts.shard_num
 where (
        processor like 'Full%'
     or last < upto and datediff(second , run, now()) > repeat
-    or last < now() - interval 1 day   --??
       )
   and ( -- time of day limiting
        length(time) = 0

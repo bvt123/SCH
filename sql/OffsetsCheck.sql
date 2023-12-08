@@ -11,13 +11,14 @@ select now() as ts, 'INFO' as level,
   'processing', off.1, toDateTime(off.3) as topic,
   'step:'  || toString(dateDiff(minute, off.2, off.3)) || 'min' ||
   ', lag:' || toString(dateDiff(minute, off.3, now())) || 'min' as mins,
-
+-- todo: topic exclusion won't help as we need check table.
+-- todo: if we run scheduler on different cluster nodes such check won't do the job
 throwLog((select count() from system.processes
           where Settings['sch_topic'] = '''' || _topic ||'''' and query_id != query_id()) > 0,
           'ERROR','other process is serving ' || _topic) as err1,
 throwLog(off.1 = 0,'NOJOBS',off.6)  as err2,
 throwLog(off.4 not in ['', hostid ] and off.5 > now() - interval 3 hour,
-                 'MUTEX', 'host ' || hostid || ' failed in taking the mutex' )  as err3
+                 'MUTEX', 'host ' || hostid || ' failed in taking the host mutex' )  as err3
 ;
 
 create or replace function checkBlockSequence as (arr) ->

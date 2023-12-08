@@ -7,8 +7,8 @@ export HID=`hostname`-`hostid`
 printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\tscheduler started\n' >> $LOG
 
 process() {
-    export CLC="clickhouse-client -n -f TSV --param_topic=${1}_p"   # -h $4 for shard processing
-    if ! ps ax | grep "$CLC" | grep -v grep > /dev/null
+    export CLC="clickhouse-client -n -f TSV --param_table=${1%%#*}_p"   # -h $4 for shard processing
+    if ! ps ax | grep "$CLC" | grep -v grep > /dev/null   # only one process in a time per db.table
     then
         printf '%(%Y-%m-%d %H:%M:%S)T\tINFO\t'"$1-$2"'\tstarted\n' >> $LOG
         ( echo  "$5" | $STEP  "$1" "$2" "$3" ) &

@@ -7,8 +7,9 @@
 
  Variables substituted during template processing:
  
- @topic@   - in format DB.table#xxx .....
- @table@   - dest table
+ @topic@   - in format DB.table#tag .....
+ @dbtable@   - dest table with db
+ @table@     - dest table without db
  @source@  - source table
  @tag@     - part of topic after #
  @step@ - how much data to process on one Transform, could be number of rows of seconds or anything else

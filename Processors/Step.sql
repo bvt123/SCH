@@ -34,7 +34,7 @@ insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
 
 select * from SCH.OffsetsCheck;     -- check conditions and throw nojobs to run again later
 
-insert into @table@ select * from ETL.@name@Transform;
+insert into @dbtable@ select * from ETL.@table@Transform;
 
 select now(), 'INFO','@topic@' || '-' || splitByChar(':',getSetting('log_comment'))[2],
     'processed',
