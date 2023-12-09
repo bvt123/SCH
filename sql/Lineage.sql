@@ -5,6 +5,7 @@ create table  SCH.Lineage on cluster '{cluster}'
     topic         String,                -- dest db.table[#tag]
     source        String,                -- main source db.table
     processor     String default 'Step',
+    transform     String,                -- view name with data transformation code
     delay         String default '0s',   -- delay processing to compensate ingesting lag. e.x '11s+22min'
     dependencies  String,                -- delay processing  by checking update time of dependant objects (tables or dicts)
     repeat        String default '1h',
@@ -20,6 +21,9 @@ create table  SCH.Lineage on cluster '{cluster}'
 engine = ReplicatedMergeTree() order by tuple() ;
 
 --insert into SCH.Lineage(table, source) values ('Fact.Example','Stage.example');
+
+insert into SCH.Lineage(topic,source,processor,delay,dependencies,repeat)
+values ('Fact.ComputerTime','Stage.tc_user_log','Step','20s','Dim.UsersDict','1m');
 
 --drop dictionary SCH.LineageDict on cluster '{cluster}';
 create or replace dictionary SCH.LineageDict on cluster '{cluster}'

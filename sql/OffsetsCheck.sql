@@ -20,18 +20,3 @@ throwLog(off.1 = 0,'NOJOBS',off.6)  as err2,
 throwLog(off.4 not in ['', hostid ] and off.5 > now() - interval 3 hour,
                  'MUTEX', 'host ' || hostid || ' failed in taking the host mutex' )  as err3
 ;
-
-create or replace function checkBlockSequence as (arr) ->
--- input: [array of array[start,end]]
--- output: bool
-    arraySum(
-        (arrayFilter(x,y->y%2=0,
-            (arrayPopFront
-                (arrayDifference
-                    (arrayFlatten(arraySort(arr))
-                )
-            ) as s),
-            arrayEnumerate(s) ) as t
-        )
-    ) != length(t)
-;
