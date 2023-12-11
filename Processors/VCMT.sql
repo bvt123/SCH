@@ -28,41 +28,75 @@ dest table req:
 
 insert into SCH.Params
 select 'DAG_VCMT',$$
-set sch_topic = '@topic@';
---set log_comment='aafaf';  -- for debug
+set sch_topic = '@topic@',
+    keeper_map_strict_mode=1,
+    max_partitions_per_insert_block=0
+;
 
-set receive_timeout=300; SYSTEM SYNC REPLICA @dbtable@ ; --wait for parts fetched from other replica
-SELECT throwLog(count() > 0,'WARNING','Replication is Active. Will try again later.') FROM clusterAllReplicas('@cluster@',system.replication_queue) WHERE database || '.' || table = '@dbtable@';
-
-set max_partitions_per_insert_block=0;
+-- load transformed data block
+create temporary table  __new as (
+    select * from (
+        with (select last,next from SCH.Offsets where topic='@topic@') as _ln
+        select * except ( _part ), _pos, splitByChar('_', _part) as _block
+        from (@transform@)                -- join and group by could be here
+        where _pos > _ln.1 -- where push down should work
+          and if(_ln.2 != 0, _pos <= _ln.2, snowflakeToDateTime(_pos) < {upto:DateTime})
+        order by _version desc limit 1 by _orig_pk
+    )
+    order by _pos limit @step@
+)
+;
+-- check for nojobs and block mismatch
+select  checkBlockSequence(groupUniqArray([toUInt32(_block[2]),toUInt32(_block[3])])) as block_seq,
+       count() rows
+from __new
+having throwLog(block_seq, 'ERROR','Block Sequence Mismatch. It could be a high replication lag.') = ''
+  and throwLog(rows = 0,'NOJOBS','') != ''
+;
+-- try to acquire semaphore per dest table and shard. It could be done better with ZK API.
+alter table SCH.TableMutex update
+    host_tag = {HID:String} ||'@tag@',
+    processor = 'VCMT'
+where table='@dbtable@@shard@'
+  and (host_tag = '' or updated_at > now() - interval 2 hour) -- ignore stale
+;
+-- check semaphore acquisition and throw exception if not
+select {HID:String} || '@tag@' as _host_tag
+from SCH.TableMutex
+where table='@dbtable@@shard@'
+  and host_tag = _host_tag
+having throwLog(count()!=1 , 'MUTEX', _host_tag || ' failed in taking the mutex' ) != ''
+;
+-- save position
 insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
-    with ( select last from SCH.Offsets where topic='@topic@' ) as _last,
-         data as ( select _pos, splitByChar('_', _part) as block
-              from @source@
-              where _pos > _last and snowflakeToDateTime(_pos) < {upto:DateTime}
-             ),
-    (select count(), max(_pos) from (select _pos from data order by _pos limit @step@)) as stat,
-    (select checkBlockSequence(groupUniqArray([toUInt32(block[2]),toUInt32(block[3])])) from data ) as check
+    with (select count(), max(_pos) from __new) as stat
     select topic, stat.2, last,
         stat.1                                        as rows,
-        if(rows >= @step@,'FullStep','Step')          as processor,
+        if(rows >= @step@,'FullVCMT','VCMT')          as processor,
         if(rows > 0, 'processing', 'delayed' )        as state,
-        splitByChar(':',getSetting('log_comment'))[1] as hostid
+        {HID:String}                                  as hostid
     from SCH.Offsets
     where topic='@topic@'
       and next = 0
-      and throwLog(check, 'ERROR','Block Sequence Mismatch. It could be a high replication lag.') = ''
+settings keeper_map_strict_mode=0;
+
+-- sync replica for dest table
+set receive_timeout=300; SYSTEM SYNC REPLICA @dbtable@ ; --wait for parts fetched from other replica
+
+-- print processing INFO for log and throw if replication still active
+with (SELECT throwLog(count() > 0,'WARNING','Replication is Active. Will try again later.')
+      FROM clusterAllReplicas('{cluster}',system.replication_queue) WHERE database || '.' || table = '@dbtable@'
+      ) as err
+select LogLine('INFO','@topic@',{query_id:String},'processing '),
+  rows, toDateTime(snowflakeToDateTime(next)),
+  'step:'  || toString(dateDiff(minute, snowflakeToDateTime(last), snowflakeToDateTime(next))) || 'min' ||
+  ', lag:' || toString(dateDiff(minute, snowflakeToDateTime(next), now())) || 'min' as mins,
+  err
+from SCH.Offsets
+where topic = '@topic@'
 ;
 
-select * from SCH.OffsetsCheck;     -- check conditions and throw nojobs to run again later
-
-create temporary table  __new as (
-    with (select last,next from SCH.Offsets where topic='@topic@') as _ln
-    select * from (@transform@)                -- join and group by could be here
-    where _pos > _ln.1 and _pos <= _ln.2       -- where push down should work
-    order by _version desc limit 1 by _orig_pk
-);
-
+-- copy data from temp table to dest table with back ref and sign = 1/-1
 insert into @dbtable@
 with __old AS (
          SELECT *, arrayJoin([-1,1]) AS _sign from (
@@ -74,33 +108,50 @@ with __old AS (
             limit 1 by (@primary_key@)
         )
      )
-select @columns@ ,
+select @vcmt_columns@ ,
      __new._version                      AS _version,
      if(__old._sign = -1, -1, 1)         AS sign
 from __new left join __old using (@primary_key@)
 where __new._version > __old._version
   and (__new._sign != -1 or __new._sign = -1 and __old._sign = -1)
 ;
-
-select now(), 'INFO','@topic@' || '-' || splitByChar(':',getSetting('log_comment'))[2],
-    'processed',
-    written_rows,
-    formatReadableSize(memory_usage),
-    formatReadableTimeDelta(query_duration_ms/1000,'milliseconds')
-from system.query_log
-where query_id={uuid:String}
-  and event_time > now() - interval 1 minute
-  and type='QueryFinish'
-  and query ilike 'insert into @dbtable@%'
+-- release mutex
+alter table SCH.TableMutex update host_tag = '', processor = ''
+where table='@dbtable@@shard@' and host_tag = {HID:String} ||'@tag@'
 ;
-
+-- release offsets
 insert into SCH.Offsets (topic, last, rows, processor, state)
     select topic, next, rows,processor, toString(dateDiff(minute, snowflakeToDateTime(last), snowflakeToDateTime(next))) || 'min'
     from SCH.Offsets
     where topic='@topic@'
       and next != 0
+settings keeper_map_strict_mode=0
 ;
-
+-- get stats from logs
+select LogLine('INFO','@topic@',{query_id:String},'processed'),
+    written_rows,
+    formatReadableSize(memory_usage),
+    formatReadableTimeDelta(query_duration_ms/1000,'milliseconds'),
+    (select count() from system.part_log where query_id={query_id:String}
+       and event_time > now() - interval 1 hour), ' parts',
+    (select sumMap(nulls) from ETL.Log where query_id={query_id:String}
+       and ts > now() - interval 1 hour ) as add_info
+from system.query_log
+where query_id={query_id:String}
+  and event_time > now() - interval 10 minute
+  and type='QueryFinish'
+  and query ilike 'insert into @dbtable@%'
+order by event_time desc
+limit 1
+;
+select LogLine('INFO','@topic@',{query_id:String},'processed2'),
+    count(), sum(rows)
+from system.part_log
+where query_id={query_id:String}
+  and event_time > now() - interval 10 minute
+;
 $$;
 
 system reload dictionary on cluster '{cluster}' 'SCH.LineageDict' ;
+
+--select * from system.query_log where event_time > now() - interval 10 minute and query_id='204b8228-78b4-44a6-b39a-6b63086a1c1f';

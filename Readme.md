@@ -2,7 +2,7 @@
 
 When the MatView ETL process became too complicated we need something else.
 
- It builds wide Fact&Dim tables from highly normalized MySQL schema.  After syncing source tables to clickhouse stage DB, it waits several minutes to be sure that all data is received and joins several tables to store the result in Fact&Dims.   It requires running a bash script that executes insert-select queries.  Such script is very small and could be rewritten into any language (PHP too).
+ Scheduler builds wide Fact&Dim tables from highly normalized OLTP schema.  After syncing source tables to clickhouse stage DB, it waits several minutes to be sure that all data is received and joins several tables to store the result in Fact&Dims.   It requires running a bash script that executes insert-select queries.  Such script is very small and could be rewritten into any language (PHP too).
 Such ETL could solve all our hierarchical tables problems (no php code change is needed then) - I will use clickhouse hierarchical dictionaries to expand the hierarchy to flat tables.   The problem with the current approach based on Materialized Views is that MV can't wait until the dictionary reloads data.  With external bash SQL runner, it becomes possible.
 
 ### From ETL to CDC
@@ -31,10 +31,11 @@ In case of failures in external systems data inserted into Stage tables could ha
 
 All ETL processes is built with idempotency in mind.  Repeated inserts should not create duplicates in destination Fact or Dimension tables. 
 
-There are two deduplication mechanisms:
+There are several deduplication mechanisms:
 
  - Block hashes checks: Clickhouse stores a hash for every inserted block, and the Scheduler uses these hashes to identify identical blocks of data for processing by the Transform Views.
- - ReplacingMT/CollaspisingMT table engines. We look up every row in destination table before inserting, to ensure that duplicates are not produced. This process slows down inserts, but it provides more assurance against different type of problems in the data pipeline.
+ - MergeTree table engine. We look up every row in destination table before inserting, to ensure that duplicates are not produced. This process slows down inserts, but it provides more assurance against different type of problems in the data pipeline, including human errors.
+ - CollapsingMT table engine. The same lookup to the existing data, but we get the old rows with metric values, to insert sign=-1 row, needed for collapsing and produce aggregates over the table (in form of Projections and MaterializedViews)
 
 ### Hot Standby Replicated Cluster
 
@@ -48,9 +49,13 @@ Some stage-level tables are based on the EmbeddedRocksDB engine (non-replicated 
 
 ### Sharded Cluster
 
-- any table could be split into several shards by some “where expression” defined in the Transform view or by processing already sharded source tables received from Kafka partitions or the previous ETL step.
-- “sharding key”  could be defined in a Transform View to skip some data not related to the shard - e.x. jumpConsistentHash(id,2)
-- every shard should have all the dictionaries and tables needed for join-transforms.
-- The Scheduler calls the same Transform View for every shard
-- SCH.Offsets table store “topic" position for every shard independently.
-- The scheduler runs Transform view on every server in the shard group.
+When the event volume is too high, it's possible to make a sharded architecture.
+
+- insert source events to Distributed table
+- use some natural ID as a shard expression (not random!)
+- store table could be replicated in the shard group
+- standard requirements for store table (like _pos column and _orig_pk tuple) is applied
+- every shard should have all the dependencies like dictionaries and tables needed for join-transforms.
+- SCH.Offsets table store “topic" position for every shard independently with shard num suffix - ":01"
+- The Scheduler use the same Transform View for every shard. Only 1 row per dest table in SCH Lineage
+- The Scheduler connects to shard group nodes to execute Transform view 
