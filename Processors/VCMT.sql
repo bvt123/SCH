@@ -39,11 +39,11 @@ create temporary table  __new as (
         with (select last,next from SCH.Offsets where topic='@topic@') as _ln
         select * except ( _part ), _pos, splitByChar('_', _part) as _block
         from (@transform@)                -- join and group by could be here
-        where _pos > _ln.1 -- where push down should work
+        where _pos > _ln.1                -- where push down should work
           and if(_ln.2 != 0, _pos <= _ln.2, snowflakeToDateTime(_pos) < {upto:DateTime})
-        order by _version desc limit 1 by _orig_pk
+        order by _pos limit @step@
     )
-    order by _pos limit @step@
+    order by _version desc,_pos desc limit 1 by _orig_pk
 )
 ;
 -- check for nojobs and block mismatch
@@ -72,7 +72,7 @@ insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
     with (select count(), max(_pos) from __new) as stat
     select topic, stat.2, last,
         stat.1                                        as rows,
-        if(rows >= @step@,'FullVCMT','VCMT')          as processor,
+        if(rows >= 0.5 * @step@,'FullVCMT','VCMT')    as processor,
         if(rows > 0, 'processing', 'delayed' )        as state,
         {HID:String}                                  as hostid
     from SCH.Offsets
@@ -87,7 +87,7 @@ set receive_timeout=300; SYSTEM SYNC REPLICA @dbtable@ ; --wait for parts fetche
 with (SELECT throwLog(count() > 0,'WARNING','Replication is Active. Will try again later.')
       FROM clusterAllReplicas('{cluster}',system.replication_queue) WHERE database || '.' || table = '@dbtable@'
       ) as err
-select LogLine('INFO','@topic@',{query_id:String},'processing '),
+select now(), 'INFO','@topic@'||'-'||{seq:String},'processing',
   rows, toDateTime(snowflakeToDateTime(next)),
   'step:'  || toString(dateDiff(minute, snowflakeToDateTime(last), snowflakeToDateTime(next))) || 'min' ||
   ', lag:' || toString(dateDiff(minute, snowflakeToDateTime(next), now())) || 'min' as mins,
@@ -128,28 +128,18 @@ insert into SCH.Offsets (topic, last, rows, processor, state)
 settings keeper_map_strict_mode=0
 ;
 -- get stats from logs
-select LogLine('INFO','@topic@',{query_id:String},'processed'),
-    written_rows,
-    formatReadableSize(memory_usage),
-    formatReadableTimeDelta(query_duration_ms/1000,'milliseconds'),
-    (select count() from system.part_log where query_id={query_id:String}
-       and event_time > now() - interval 1 hour), ' parts',
-    (select sumMap(nulls) from ETL.Log where query_id={query_id:String}
-       and ts > now() - interval 1 hour ) as add_info
-from system.query_log
-where query_id={query_id:String}
-  and event_time > now() - interval 10 minute
-  and type='QueryFinish'
-  and query ilike 'insert into @dbtable@%'
-order by event_time desc
+select now(), 'INFO','@topic@'||'-'||{seq:String},'processed',
+    sum(rows), max(max_ts),
+    formatReadableTimeDelta(dateDiff(second , (select run from SCH.Offsets where topic='@topic@'),now())),
+    sumMap(nulls)
+from ETL.Log
+where topic='@topic@'
+     and ts > now() - interval 1 hour
+group by query_id
+order by max(ts) desc
 limit 1
 ;
-select LogLine('INFO','@topic@',{query_id:String},'processed2'),
-    count(), sum(rows)
-from system.part_log
-where query_id={query_id:String}
-  and event_time > now() - interval 10 minute
-;
+
 $$;
 
 system reload dictionary on cluster '{cluster}' 'SCH.LineageDict' ;

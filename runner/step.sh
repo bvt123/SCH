@@ -2,7 +2,8 @@
 
 # executed with: topic version upto
 
-err=`$CLC --log_comment=$HID:$2 "--param_upto=${3}" 3>&1 1>>$LOG 2>&3 | grep Exception | tr "'" " " | sed -e 's/.*Exception: |\(.*\)|: while.*/\1/'`
+uuid=`uuidgen`
+err=`$CLC --log_comment=$HID:$2 "--param_HID=$HID" "--param_seq=${2}" "--param_upto=${3}" "--param_query_id=${uuid}" "--query_id=${uuid}" 3>&1 1>>$LOG 2>&3 | grep Exception | tr "'" " " | sed -e 's/.*Exception: |\(.*\)|: while.*/\1/'`
 
 if [ "$err" != "" ] ;  then
 
