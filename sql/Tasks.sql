@@ -5,7 +5,7 @@
 CREATE or replace VIEW SCH.Tasks on cluster '{cluster}' as
 WITH splitByChar(':', topic)[1] as table_tag,
      toUInt8OrZero(splitByChar(':', topic)[2]) as topic_shard,
-  O1 as (
+  topics as (
       SELECT topic,
              run,
              processor,
@@ -21,24 +21,29 @@ WITH splitByChar(':', topic)[1] as table_tag,
       FROM SCH.Offsets
       WHERE sql != ''
   ),
-  O2 as (
+  tables as (
       SELECT table_tag as tt, snowflakeToDateTime(last) as last FROM SCH.Offsets WHERE processor != 'deleted'
         union all
       select database||'.'||name,last_successful_update_time last from system.dictionaries where last > 0
+        union all
+      select database||'.'||name as tt,max(event_time) as last from system.part_log
+      where event_time > now() - interval 2 hour
+        and event_type='NewPart'
+      group by tt
   ),
   updates as (
-         SELECT O1.topic                           AS topic,
-                any(O1.processor)                  AS processor,
-                any(O1.run)                        AS run,
-                any(O1.topic_shard)                AS shard,
-                any(O1.hostid)                     AS hostid,
-                any(O1.repeat)                     AS repeat,
-                any(O1.delay)                      AS delay,
-                any(O1.time)                       AS time,
-                any(O1.sql)                        AS sql,
-                any(O1.last)                       AS last,
-                minIf(O2.last, O2.last != 0)       AS mins
-         FROM O1 LEFT JOIN O2 ON O1.dependencies = O2.tt
+         SELECT topics.topic                           AS topic,
+                any(topics.processor)                  AS processor,
+                any(topics.run)                        AS run,
+                any(topics.topic_shard)                AS shard,
+                any(topics.hostid)                     AS hostid,
+                any(topics.repeat)                     AS repeat,
+                any(topics.delay)                      AS delay,
+                any(topics.time)                       AS time,
+                any(topics.sql)                        AS sql,
+                any(topics.last)                       AS last,
+                minIf(tables.last, tables.last != 0)       AS mins
+         FROM topics LEFT JOIN tables ON topics.dependencies = tables.tt
          GROUP BY topic
     )
 SELECT topic,

@@ -1,3 +1,13 @@
+
+select snowflakeToDateTime64(toInt64(1702632035070));
+create or replace function schIdNum as (_n) ->
+  bitOr(bitShiftLeft(_n,16),
+   bitAnd(bitAnd((rowNumberInAllBlocks() as ch),0x3FFFFF)+
+      bitAnd(bitShiftRight(ch, 20),0x3FFFFF)+
+      bitAnd(bitShiftRight(ch, 40),0x3FFFFF),
+      0x3FFFFF)
+  );
+
 create or replace function schId as () ->
   bitOr(dateTime64ToSnowflake(now64(3)),
    bitAnd(bitAnd((rowNumberInAllBlocks() as ch),0x3FFFFF)+

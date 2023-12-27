@@ -24,62 +24,40 @@ dest table req:
     sign            Int8 default 1
     ) Engine = VersionedCollapsingMergeTree(sign, _version)
 
+ todo:
+
+1. max(pos)
+2. if(__old._sign = -1, __old._version , __new._version )   AS _version,
+
  */
 
 insert into SCH.Params
 select 'DAG_VCMT',$$
 set sch_topic = '@topic@',
-    keeper_map_strict_mode=1,
     max_partitions_per_insert_block=0
 ;
 
--- load transformed data block
-create temporary table  __new as (
-    select * from (
-        with (select last,next from SCH.Offsets where topic='@topic@') as _ln
-        select * except ( _part ), _pos, splitByChar('_', _part) as _block
-        from (@transform@)                -- join and group by could be here
-        where _pos > _ln.1                -- where push down should work
-          and if(_ln.2 != 0, _pos <= _ln.2, snowflakeToDateTime(_pos) < {upto:DateTime})
-        order by _pos limit @step@
-    )
-    order by _version desc,_pos desc limit 1 by _orig_pk
-)
-;
--- check for nojobs and block mismatch
-select  checkBlockSequence(groupUniqArray([toUInt32(_block[2]),toUInt32(_block[3])])) as block_seq,
-       count() rows
-from __new
-having throwLog(block_seq, 'ERROR','Block Sequence Mismatch. It could be a high replication lag.') = ''
-  and throwLog(rows = 0,'NOJOBS','') != ''
-;
--- try to acquire semaphore per dest table and shard. It could be done better with ZK API.
-alter table SCH.TableMutex update
-    host_tag = {HID:String} ||'@tag@',
-    processor = 'VCMT'
-where table='@dbtable@@shard@'
-  and (host_tag = '' or updated_at > now() - interval 2 hour) -- ignore stale
-;
--- check semaphore acquisition and throw exception if not
-select {HID:String} || '@tag@' as _host_tag
-from SCH.TableMutex
-where table='@dbtable@@shard@'
-  and host_tag = _host_tag
-having throwLog(count()!=1 , 'MUTEX', _host_tag || ' failed in taking the mutex' ) != ''
-;
--- save position
+-- decide what data to process and check for replication lag in source table
 insert into SCH.Offsets (topic, next, last, rows,  processor,state,hostid)
-    with (select count(), max(_pos) from __new) as stat
-    select topic, stat.2, last,
-        stat.1                                        as rows,
-        if(rows >= 0.5 * @step@,'FullVCMT','VCMT')    as processor,
-        if(rows > 0, 'processing', 'delayed' )        as state,
-        {HID:String}                                  as hostid
+    with ( select last from SCH.Offsets where topic='@topic@' ) as _last,
+         data as ( select _pos, splitByChar('_', _part) as block
+              from @source@
+              where _pos > _last and snowflakeToDateTime(_pos)  < {upto:DateTime}
+             ),
+    (select count(), max(_pos) from (select _pos from data order by _pos limit @step@)) as stat,
+    (select checkBlockSequence(groupUniqArray([toUInt32(block[2]),toUInt32(block[3])])) from data ) as check
+    select topic,
+        stat.2                                              as next,
+        last,
+        stat.1                                              as rows,
+        if(rows >= @step@,'Full@processor@','@processor@')  as processor,
+        if(rows > 0, 'processing', 'delayed' )              as state,
+        {HID:String}                                        as hostid
     from SCH.Offsets
     where topic='@topic@'
-      and next = 0
-settings keeper_map_strict_mode=0;
-
+      and SCH.Offsets.next = 0
+      and throwLog(check, 'ERROR','Block Sequence Mismatch. It could be a high replication lag.') = ''
+;
 -- sync replica for dest table
 set receive_timeout=300; SYSTEM SYNC REPLICA @dbtable@ ; --wait for parts fetched from other replica
 
@@ -95,7 +73,30 @@ select now(), 'INFO','@topic@'||'-'||{seq:String},'processing',
 from SCH.Offsets
 where topic = '@topic@'
 ;
-
+-- execute transform view for selected block
+create temporary table  __new as (
+    with (select last,next,rows from SCH.Offsets where topic='@topic@') as _ln
+    select * from (@transform@) -- where, joins and group by could be here
+    where _pos > _ln.1 and _pos <= _ln.2   -- where pushdown to view supposed to work fine for that
+      and throwLog(_ln.3 = 0,'NOJOBS','') = ''
+    order by _version desc,_pos desc limit 1 by _orig_pk
+)
+;
+-- try to acquire semaphore per dest table and shard. It could be done better with ZK API.
+alter table SCH.TableMutex update
+    host_tag = {HID:String} ||'@tag@',
+    processor = 'VCMT'
+where table='@dbtable@@shard@'
+  and (host_tag = '' or updated_at > now() - interval 2 hour) -- ignore stale
+settings keeper_map_strict_mode=1
+;
+-- check semaphore acquisition and throw exception if not
+select {HID:String} || '@tag@' as _host_tag
+from SCH.TableMutex
+where table='@dbtable@@shard@'
+  and host_tag = _host_tag
+having throwLog(count()!=1 , 'MUTEX', _host_tag || ' failed in taking the mutex' ) != ''
+;
 -- copy data from temp table to dest table with back ref and sign = 1/-1
 insert into @dbtable@
 with __old AS (
@@ -109,15 +110,19 @@ with __old AS (
         )
      )
 select @vcmt_columns@ ,
-     __new._version                      AS _version,
-     if(__old._sign = -1, -1, 1)         AS sign
+     if(__old._sign = -1, __old._version , __new._version )   AS _version,
+     -- __new._version                                  AS _version,
+     if(__old._sign = -1, -1, 1)                     AS sign
 from __new left join __old using (@primary_key@)
-where __new._version > __old._version
-  and (__new._sign != -1 or __new._sign = -1 and __old._sign = -1)
+where if(__new._sign = -1, --__new.is_deleted,
+  __old._sign = -1,                -- insert only delete row if it's found in old data
+  __new._version > __old._version  -- skip duplicates for updates
+)
 ;
 -- release mutex
 alter table SCH.TableMutex update host_tag = '', processor = ''
 where table='@dbtable@@shard@' and host_tag = {HID:String} ||'@tag@'
+settings keeper_map_strict_mode=1
 ;
 -- release offsets
 insert into SCH.Offsets (topic, last, rows, processor, state)
@@ -125,7 +130,6 @@ insert into SCH.Offsets (topic, last, rows, processor, state)
     from SCH.Offsets
     where topic='@topic@'
       and next != 0
-settings keeper_map_strict_mode=0
 ;
 -- get stats from logs
 select now(), 'INFO','@topic@'||'-'||{seq:String},'processed',

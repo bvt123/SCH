@@ -1,3 +1,9 @@
+/*
+ Transformation from Stage/Source table to Fact table.
+ Both tables required to have special columns. Read here the details -
+ https://github.com/bvt123/SCH/blob/4d8f55b9f0731a2bdf3385f5ad0652ee9891e662/Processors/VCMT.sql
+ */
+
 create table Fact.Example ON CLUSTER '{cluster}'
 (
     account_id      UInt32,
@@ -30,9 +36,9 @@ select getAccountForUser(user_id) as account_id,
     entry_id, window_title_id,
     end_date, end_time,
     time_span,
-    _version, _sign
-from Stage.example;
-
+    _version, _sign, _pos, _orig_pk, _part   --have to add all of them!
+from view_db.example;
+;
 set sch_topic='Fact.Example';
 drop view if exists ETL.Log_Example on cluster '{cluster}';
 create materialized view ETL.Log_Example on cluster '{cluster}'
